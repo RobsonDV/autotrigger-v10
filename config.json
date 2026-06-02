@@ -1,0 +1,15 @@
+{
+  "txt_file_path": "C:/Users/User/Downloads/MidiaAtual.txt",
+  "keyword_start": "ESPORTE",
+  "keyword_unmute": "FIM_ESPORTE",
+  "input_device_id": "{0.0.1.00000000}.{2a24c533-249e-4725-8743-197ba474ac03}",
+  "input_device_name": "Microfone (RODECaster Pro Stereo)",
+  "output_device_id": "{0.0.0.00000000}.{26e07ddf-8bb3-415e-835b-a63ee090dfba}",
+  "output_device_name": "Alto-falantes (RODECaster Pro Stereo)",
+  "audio_file_1": "E:/Playlist Pajé/VHT TERRA FM/VHT TERRA FM - 97,7 CARIMBO_4 (ACCAPELA).mp3",
+  "audio_file_2": "E:/Playlist Pajé/VHT TERRA FM/VHT TERRA FM - A MELHOR DA REGIAO (FEM).mp3",
+  "stream_url": "https://8033.brasilstream.com.br/stream.m3u",
+  "stream_duration": 30,
+  "hotkey_stop": "f11",
+  "hotkey_play": "f9"
+}

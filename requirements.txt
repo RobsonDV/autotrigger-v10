@@ -1,0 +1,9 @@
+customtkinter>=5.2.0
+pycaw>=20230407
+comtypes>=1.4.1
+python-vlc>=3.0.21203
+watchdog>=4.0.0
+keyboard>=0.13.5
+pystray>=0.19.5
+Pillow>=10.0.0
+pyinstaller>=6.0.0
