@@ -12,6 +12,9 @@ build/
 # PyInstaller output
 *.exe
 *.app
+dist/
+build/
+*.spec
 
 # Virtual environments
 venv/

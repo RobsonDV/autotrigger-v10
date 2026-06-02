@@ -68,6 +68,7 @@ O app faz **tudo isso automaticamente** monitorando um arquivo TXT que o softwar
 ```
 Jornada_Maisnova/
 ├── main.py               # Entry point — inicializa tudo, tray icon, lifecycle
+├── version.py            # Fonte única da versão (__version__, GITHUB_REPO, GITHUB_ASSET_NAME)
 ├── config.py             # Carrega/salva config.json; DEFAULT_CONFIG; classe Config
 ├── config.json           # Configuração persistida pelo usuário
 ├── audio_manager.py      # Mute/unmute via pycaw (list_input/output_devices)
@@ -75,17 +76,20 @@ Jornada_Maisnova/
 ├── sequence.py           # Máquina de estados da Jornada Esportiva (8 estados)
 ├── file_monitor.py       # Watchdog — monitora TXT e dispara triggers
 ├── hotkey_sender.py      # send_hotkey() e capture_hotkey() via keyboard lib
+├── updater.py            # Auto-update: consulta GitHub API, baixa .exe, instala via batch
 ├── requirements.txt      # Dependências pip
+├── version_info.txt      # Metadados do .exe para Windows Explorer (PyInstaller)
+├── build.bat             # Compila + publica GitHub Release automaticamente
 ├── run.bat               # Atalho para rodar em dev
-├── build.bat             # Script PyInstaller para gerar .exe
 ├── memory.md             # Este arquivo — documentação viva do projeto
 ├── assets/
 │   └── icon.ico          # Ícone da aplicação
 └── ui/
     ├── __init__.py
-    ├── main_window.py    # Janela principal CTk + abas + header + statusbar
+    ├── main_window.py    # Janela principal CTk + abas + header com botão de versão
     ├── config_tab.py     # Aba de configurações completa
-    └── log_tab.py        # Aba de log + painel visual da sequência
+    ├── log_tab.py        # Aba de log + painel visual da sequência
+    └── update_dialog.py  # Dialog de atualização: notas de versão + barra de progresso
 ```
 
 ---
@@ -179,8 +183,17 @@ VLC não usava o dispositivo de saída configurado.
 - `main.py` passa `player` para `MainWindow`, aplica `set_output_device()` na init
 - Log do player conectado à UI via `set_log()`
 
-### Fase 5 — Documentação e Repositório (atual)
-- Criação deste `memory.md`
+### Fase 5 — Auto-Update + Build v1.0.0 (2026-06-02)
+- `version.py` criado como fonte única da versão
+- `updater.py`: consulta GitHub Releases API, baixa asset .exe, instala via batch sem bloquear app
+- `ui/update_dialog.py`: dialog com notas de versão, barra de progresso de download
+- `ui/main_window.py`: botão `v1.0.0` no header vira badge `🔔 vX.Y.Z disponível` quando há update
+- `build.bat` reescrito: lê versão automaticamente, gera `.exe` versionado, publica release via `gh` CLI
+- `version_info.txt`: metadados Windows (.exe mostra versão no Explorer)
+- **v1.0.0 compilada (23,9 MB) e publicada em:** https://github.com/RobsonDV/maisnova-sport-trigger/releases/tag/v1.0.0
+
+### Fase 6 — Documentação e Repositório (2026-06-02)
+- `memory.md` criado
 - `.gitignore` configurado
 - Repositório GitHub criado e código publicado
 
@@ -269,5 +282,6 @@ python -c "import audio_manager; print(audio_manager.list_input_devices()); prin
 
 | Data | Descrição |
 |---|---|
-| 2026-06-02 | Criação inicial — documentação completa das fases 1-5 |
+| 2026-06-02 | Criação inicial — documentação completa das fases 1-4 |
+| 2026-06-02 | Auto-update + build v1.0.0 publicado no GitHub Releases |
 
