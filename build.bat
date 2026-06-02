@@ -12,8 +12,16 @@ for /f "tokens=*" %%i in ('python -c "from version import __version__; print(__v
 echo Versao detectada: v%APP_VERSION%
 echo.
 
+REM ── Gera ícone atualizado ────────────────────────────────────────────────
+echo.
+echo [1/4] Gerando icone...
+python create_icon.py
+if %ERRORLEVEL% NEQ 0 (
+    echo AVISO: Falha ao gerar icone — usando icone existente.
+)
+
 REM ── Dependências ────────────────────────────────────────────────────────
-echo [1/4] Instalando dependencias...
+echo [2/4] Instalando dependencias...
 pip install -r requirements.txt --quiet
 if %ERRORLEVEL% NEQ 0 (
     echo ERRO ao instalar dependencias.
@@ -30,8 +38,7 @@ echo.
 pyinstaller ^
   --onefile ^
   --windowed ^
-  --name "SportTrigger" ^
-  --version-file "version_info.txt" ^
+  --name "SportTrigger" ^  --icon "assets\icon.ico" ^  --version-file "version_info.txt" ^
   --add-data "config.json;." ^
   --add-data "assets;assets" ^
   --hidden-import "pycaw" ^
@@ -83,6 +90,14 @@ gh release create "v%APP_VERSION%" ^
   "dist\SportTrigger.exe#SportTrigger.exe" ^
   --title "v%APP_VERSION%" ^
   --generate-notes
+
+REM Se o instalador Inno Setup existir, adiciona ao release também
+if exist "dist\MaisNova_SportTrigger_Setup_v%APP_VERSION%.exe" (
+    gh release upload "v%APP_VERSION%" ^
+      "dist\MaisNova_SportTrigger_Setup_v%APP_VERSION%.exe#MaisNova_SportTrigger_Setup_v%APP_VERSION%.exe" ^
+      --clobber
+    echo Instalador adicionado ao release.
+)
 
 if %ERRORLEVEL% EQU 0 (
     echo.
