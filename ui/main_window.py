@@ -6,6 +6,7 @@ import customtkinter as ctk
 from ui.config_tab import ConfigTab
 from ui.log_tab import LogTab
 from sequence import State
+from version import __version__
 
 
 _STATE_DISPLAY = {
@@ -44,6 +45,10 @@ class MainWindow(ctk.CTk):
         # Auto-iniciar monitor se TXT já estiver configurado
         self.after(500, self._auto_start_monitor)
 
+        # Verifica atualizações silenciosamente após 3s
+        self._pending_update = None
+        self.after(3000, self._init_updater)
+
     # ── layout ──────────────────────────────────────────────────────────────
 
     def _build_ui(self):
@@ -66,6 +71,15 @@ class MainWindow(ctk.CTk):
             anchor="w",
         ).grid(row=0, column=0, sticky="w", padx=16, pady=10)
 
+        # Botão de atualização (canto direito do header)
+        self._update_btn = ctk.CTkButton(
+            header, text=f"v{__version__}", width=80, height=28,
+            fg_color="transparent", hover_color="#1a1a3a",
+            text_color="#555577", font=ctk.CTkFont(size=11),
+            command=self._check_for_updates_manual,
+        )
+        self._update_btn.grid(row=0, column=1, sticky="e", padx=(4, 8))
+
         self._header_state = ctk.CTkLabel(
             header,
             text="● Parado",
@@ -73,7 +87,7 @@ class MainWindow(ctk.CTk):
             text_color="#888888",
             anchor="e",
         )
-        self._header_state.grid(row=0, column=1, sticky="e", padx=16)
+        self._header_state.grid(row=0, column=2, sticky="e", padx=16)
 
         # Tabs
         self._tabs = ctk.CTkTabview(self, corner_radius=8)
@@ -212,6 +226,80 @@ class MainWindow(ctk.CTk):
                 f"Falha ao iniciar monitor. Verifique o arquivo: {txt}", "error")
 
     # ── misc ──────────────────────────────────────────────────────────────────
+
+    # ── auto-update ─────────────────────────────────────────────────────────
+
+    def _init_updater(self):
+        """Inicia verificação silenciosa de atualização em background."""
+        try:
+            from updater import Updater
+            from ui.update_dialog import UpdateDialog
+            self._updater = Updater(log_callback=self._log_tab.log)
+            self._UpdateDialog = UpdateDialog
+
+            def _on_available(info):
+                self.after(0, lambda: self._show_update_badge(info))
+
+            self._updater.check_async(on_update_available=_on_available)
+        except Exception as exc:
+            self._log_tab.log(f"Auto-update: {exc}", "warn")
+
+    def _show_update_badge(self, info):
+        """Marca o botão de versão indicando atualização disponível."""
+        self._pending_update = info
+        self._update_btn.configure(
+            text=f"🔔 v{info.version} disponível",
+            fg_color="#1565c0", hover_color="#0d47a1",
+            text_color="#ffffff", width=180,
+        )
+        self._log_tab.log(
+            f"Nova versão disponível: v{info.version} — clique no botão no topo para instalar.",
+            "success",
+        )
+
+    def _check_for_updates_manual(self):
+        """Chamado ao clicar no botão de versão — abre dialog ou faz check manual."""
+        if hasattr(self, "_pending_update") and self._pending_update:
+            self._open_update_dialog(self._pending_update)
+        else:
+            self._update_btn.configure(text="Verificando...", state="disabled")
+            try:
+                from updater import Updater
+                from ui.update_dialog import UpdateDialog
+                self._updater = Updater(log_callback=self._log_tab.log)
+                self._UpdateDialog = UpdateDialog
+
+                def _found(info):
+                    self.after(0, lambda: [
+                        self._update_btn.configure(state="normal"),
+                        self._show_update_badge(info),
+                        self._open_update_dialog(info),
+                    ])
+
+                def _none():
+                    self.after(0, lambda: self._update_btn.configure(
+                        text=f"v{__version__} ✓", state="normal",
+                        text_color="#66bb6a",
+                    ))
+                    self.after(3000, lambda: self._update_btn.configure(
+                        text=f"v{__version__}", text_color="#555577"
+                    ))
+
+                self._updater.check_async(
+                    on_update_available=_found,
+                    on_up_to_date=_none,
+                    on_error=lambda e: self.after(0, lambda: self._update_btn.configure(
+                        text=f"v{__version__}", state="normal", text_color="#555577"
+                    )),
+                )
+            except Exception:
+                self._update_btn.configure(text=f"v{__version__}", state="normal")
+
+    def _open_update_dialog(self, info):
+        self._UpdateDialog(
+            self, info,
+            on_confirm=self._updater.apply_update,
+        )
 
     def _on_config_saved(self, msg: str, error: bool = False):
         self._statusbar.set(f"  {msg}")
