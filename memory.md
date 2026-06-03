@@ -300,8 +300,9 @@ Estudada a pasta `skills` (1.383 skills; relevantes: `frontend-design`,
 | 3 | `build.bat` desatualizado (nome/`^` quebrados) | ✅ Resolvido v2.1 |
 | 4 | Teste end-to-end completo com hardware real | Pendente |
 | 5 | Stream sem áudio | Em acompanhamento (output device agora aplicado) |
-| 6 | Build .exe v2.2 (PySide6) + teste em PC sem VLC | Pendente (rodar `build.bat`) |
-| 7 | Validar tamanho do .exe com PySide6 (ajustar excludes) | Pendente |
+| 6 | Build .exe v2.2 (PySide6) + release publicada | ✅ v2.2.0 publicada (113MB) |
+| 7 | Tamanho do .exe (113MB) — enxugar excludes Qt/UPX | Aberto (otimização) |
+| 8 | Teste em PC sem VLC instalado | Pendente |
 
 ---
 
@@ -403,4 +404,5 @@ python -c "import audio_manager; print(audio_manager.list_input_devices()); prin
 | 2026-06-02 | Auto-update + build v1.0.0 publicado no GitHub Releases |
 | 2026-06-03 | Reescrita para arquitetura v2 (motor de sequências) + Fase 7 v2.1.0 |
 | 2026-06-03 | Fase 8 v2.2.0 — migração para PySide6/Qt + UX mestre-detalhe + estabilidade |
+| 2026-06-03 | Release v2.2.0 publicada no GitHub (.exe 113MB) + README.md criado |
 
