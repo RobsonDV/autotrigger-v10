@@ -40,11 +40,14 @@ _STATE_TEXTS = {
 
 
 class SequenceDetail(QWidget):
-    def __init__(self, config, engine, on_changed: Callable):
+    def __init__(self, config, engine, on_changed: Callable,
+                 on_deleted: Callable = None, on_duplicated: Callable = None):
         super().__init__()
         self._config = config
         self._engine = engine
         self._on_changed = on_changed
+        self._on_deleted = on_deleted
+        self._on_duplicated = on_duplicated
         self._seq: dict = {}
         self._step_rows: list = []
         self._editing_idx: Optional[int] = None
@@ -100,6 +103,16 @@ class SequenceDetail(QWidget):
         actions.addSpacing(10)
         actions.addWidget(self._timer)
         actions.addStretch(1)
+        self._dup_btn = QPushButton("⧉  Duplicar")
+        self._dup_btn.setObjectName("ghost")
+        self._dup_btn.setToolTip("Criar uma cópia desta sequência")
+        self._dup_btn.clicked.connect(self._duplicate)
+        self._del_seq_btn = QPushButton("🗑  Excluir")
+        self._del_seq_btn.setObjectName("danger")
+        self._del_seq_btn.setToolTip("Excluir esta sequência")
+        self._del_seq_btn.clicked.connect(self._delete)
+        actions.addWidget(self._dup_btn)
+        actions.addWidget(self._del_seq_btn)
         v.addLayout(actions)
 
         v.addWidget(hline())
@@ -230,14 +243,15 @@ class SequenceDetail(QWidget):
         info.addWidget(label); info.addWidget(sub)
         lay.addLayout(info, 1)
 
-        for txt, slot, oid in (
-            ("▶", lambda: self._engine.test_step(step), "icon"),
-            ("✎", lambda: self._edit_step(idx), "icon"),
-            ("↑", lambda: self._move_step(idx, -1), "icon"),
-            ("↓", lambda: self._move_step(idx, +1), "icon"),
-            ("✕", lambda: self._del_step(idx), "icon"),
+        for txt, slot, oid, tip in (
+            ("▶", lambda: self._engine.test_step(step), "icon", "Testar esta etapa"),
+            ("✎", lambda: self._edit_step(idx), "icon", "Editar etapa"),
+            ("↑", lambda: self._move_step(idx, -1), "icon", "Mover para cima"),
+            ("↓", lambda: self._move_step(idx, +1), "icon", "Mover para baixo"),
+            ("✕", lambda: self._del_step(idx), "icon_danger", "Excluir etapa"),
         ):
             b = QPushButton(txt); b.setObjectName(oid)
+            b.setToolTip(tip)
             b.clicked.connect(slot)
             if txt == "↑" and idx == 0:
                 b.setEnabled(False)
@@ -304,6 +318,21 @@ class SequenceDetail(QWidget):
 
     def _cancel(self):
         self._engine.cancel(self.seq_id())
+
+    def _delete(self):
+        from PySide6.QtWidgets import QMessageBox
+        name = self._seq.get("name", "")
+        resp = QMessageBox.question(
+            self, "Excluir sequência",
+            f"Excluir a sequência '{name}'?\nEsta ação não pode ser desfeita.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if resp == QMessageBox.Yes and self._on_deleted:
+            self._on_deleted(self.seq_id())
+
+    def _duplicate(self):
+        if self._on_duplicated:
+            self._on_duplicated(self.seq_id())
 
     # ── runtime updates (chamados pela MainWindow) ───────────────────────────────
 

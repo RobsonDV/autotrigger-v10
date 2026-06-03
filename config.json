@@ -62,7 +62,13 @@
           "device_name": "Microfone (RODECaster Pro Stereo)",
           "label": "Unmute Entrada"
         }
-      ]
+      ],
+      "trigger_delay_seconds": 0,
+      "schedule": {
+        "mode": "always",
+        "weekdays": [],
+        "dates": []
+      }
     }
   ]
 }

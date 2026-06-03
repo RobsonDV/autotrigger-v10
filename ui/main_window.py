@@ -130,7 +130,11 @@ class MainWindow(QMainWindow):
         body.setHandleWidth(1)
         body.addWidget(self._build_sidebar())
         self._stack = QStackedWidget()
-        self._detail = SequenceDetail(self._config, self._engine, self._on_seq_changed)
+        self._detail = SequenceDetail(
+            self._config, self._engine, self._on_seq_changed,
+            on_deleted=self._delete_sequence,
+            on_duplicated=self._duplicate_sequence,
+        )
         self._global = GlobalSettings(self._config, self._on_global_saved)
         self._placeholder = self._build_placeholder()
         self._stack.addWidget(self._placeholder)   # 0
@@ -292,6 +296,41 @@ class MainWindow(QMainWindow):
         self._add_card(seq)
         self._refresh_armed()
         self._select_seq(seq["id"])
+        self.on_log("Nova sequência criada — defina nome, keyword e etapas.", "success")
+
+    def _duplicate_sequence(self, seq_id: str):
+        import copy, uuid
+        orig = self._config.get_sequence_by_id(seq_id)
+        if not orig:
+            return
+        dup = copy.deepcopy(orig)
+        dup["id"] = str(uuid.uuid4())[:8]
+        dup["name"] = orig.get("name", "Sequência") + " (cópia)"
+        self._config.add_sequence(dup)
+        self._config.save()
+        self._engine.reload_sequences()
+        self._add_card(dup)
+        self._refresh_armed()
+        self._select_seq(dup["id"])
+        self.on_log(f"Sequência duplicada: '{dup['name']}'.", "success")
+
+    def _delete_sequence(self, seq_id: str):
+        seq = self._config.get_sequence_by_id(seq_id)
+        name = seq.get("name", seq_id) if seq else seq_id
+        self._engine.cancel(seq_id)
+        self._config.delete_sequence(seq_id)
+        self._config.save()
+        self._engine.reload_sequences()
+        if seq_id in self._cards:
+            self._cards[seq_id].deleteLater()
+            del self._cards[seq_id]
+        self._selected_id = None
+        self.on_log(f"Sequência excluída: '{name}'.", "warn")
+        remaining = self._config.get_sequences()
+        if remaining:
+            self._select_seq(remaining[0]["id"])
+        else:
+            self._stack.setCurrentWidget(self._placeholder)
 
     def _on_seq_changed(self, seq: dict):
         if seq["id"] in self._cards:

@@ -153,6 +153,13 @@ QPushButton#icon {{
 }}
 QPushButton#icon:hover {{ background-color: {c['bg3']}; border-color: {c['border2']}; }}
 
+QPushButton#icon_danger {{
+    background-color: transparent; border: 1px solid transparent;
+    border-radius: 6px; padding: 4px; min-width: 26px; max-width: 34px;
+    color: {c['error']};
+}}
+QPushButton#icon_danger:hover {{ background-color: #5a1020; border-color: {c['error']}; }}
+
 /* ── Inputs ──────────────────────────────────────────────────────── */
 QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextEdit, QDateEdit {{
     background-color: {c['bg0']};
