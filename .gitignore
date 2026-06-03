@@ -30,6 +30,11 @@ env/
 
 # Logs
 *.log
+logs/
+
+# Artefatos de runtime do config (backup/atômico)
+config.json.bak
+config.json.tmp
 
 # OS
 Thumbs.db

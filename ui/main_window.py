@@ -1,510 +1,410 @@
 """
+Janela principal Qt — AutoTrigger V10 (estética broadcast console).
 
-Janela principal v2 — AutoTrigger V10.
-
-Layout:
-
-  Header:  logo | botão ⚙ Configurações | versão/update
-
-  Body:    JourneyView (sidebar + step flow + log)
-
-  Bottom:  status bar + botão monitor
-
+Layout em janela única:
+  ┌ top bar: logo · monitor · versão/update ─────────────────────┐
+  ├ sidebar (sequências) │ stack: detalhe / config global ───────┤
+  ├ log em tempo real (rodapé) ──────────────────────────────────┤
+  └──────────────────────────────────────────────────────────────┘
 """
+from __future__ import annotations
 
-import customtkinter as ctk
+import os
+import sys
+from typing import Dict, Optional
+
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QFrame, QStackedWidget, QScrollArea, QSplitter,
+)
 
 from version import __version__
+from timeparse import fmt_secs
+from ui.theme import COLORS, STATE_COLORS
+from ui.widgets import LogView, StatusDot, hline
+from ui.sequence_detail import SequenceDetail
+from ui.global_settings import GlobalSettings
 
-from ui.journey_view import JourneyView
 
-class MainWindow(ctk.CTk):
+def _asset_icon() -> Optional[QIcon]:
+    base = sys._MEIPASS if getattr(sys, "frozen", False) else \
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ico = os.path.join(base, "assets", "icon.ico")
+    return QIcon(ico) if os.path.exists(ico) else None
 
-    def __init__(self, config, engine, player):
 
+class SequenceCard(QFrame):
+    """Card de sequência na sidebar."""
+    def __init__(self, seq: dict, on_click):
         super().__init__()
+        self.setObjectName("raised")
+        self._sid = seq["id"]
+        self._on_click = on_click
+        self.setCursor(Qt.PointingHandCursor)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(10, 8, 10, 8)
+        lay.setSpacing(8)
+        self._dot = StatusDot("idle")
+        lay.addWidget(self._dot)
+        col = QVBoxLayout(); col.setSpacing(0)
+        self._name = QLabel(seq.get("name", ""))
+        self._name.setStyleSheet("font-weight:700;")
+        self._kw = QLabel(f"⌁ {seq.get('keyword_trigger','')}")
+        self._kw.setObjectName("dim")
+        col.addWidget(self._name); col.addWidget(self._kw)
+        lay.addLayout(col, 1)
+        self._selected = False
+        self._armed = True
+        self._repaint()
 
+    def mousePressEvent(self, _e):
+        self._on_click(self._sid)
+
+    def set_selected(self, v: bool):
+        self._selected = v
+        self._repaint()
+
+    def set_state(self, state: str):
+        self._dot.set_state(state)
+
+    def set_armed(self, armed: bool):
+        self._armed = armed
+        kw = self._kw.text().split("  ·")[0]
+        self._kw.setText(kw if armed else kw + "  · fora de agenda")
+        self._kw.setStyleSheet(
+            f"color:{COLORS['text_dim'] if armed else COLORS['warn']}; font-size:11px;")
+
+    def update_seq(self, seq: dict):
+        self._name.setText(seq.get("name", ""))
+        self._kw.setText(f"⌁ {seq.get('keyword_trigger','')}")
+
+    def _repaint(self):
+        bg = COLORS["bg3"] if self._selected else COLORS["bg2"]
+        border = COLORS["cyan"] if self._selected else COLORS["border"]
+        self.setStyleSheet(
+            f"QFrame#raised {{ background:{bg}; border:1px solid {border};"
+            f" border-radius:10px; }}")
+
+
+class MainWindow(QMainWindow):
+    def __init__(self, config, engine, player):
+        super().__init__()
         self._config = config
-
         self._engine = engine
-
         self._player = player
-
+        self._cards: Dict[str, SequenceCard] = {}
+        self._selected_id: Optional[str] = None
         self._pending_update = None
+        self._updater = None
+        self._quit_fn = None
 
-        ctk.set_appearance_mode("dark")
+        self.setWindowTitle("AutoTrigger V10")
+        self.resize(1040, 720)
+        self.setMinimumSize(880, 560)
+        ico = _asset_icon()
+        if ico:
+            self.setWindowIcon(ico)
 
-        ctk.set_default_color_theme("blue")
+        self._build()
+        self._load_sequences()
+        QTimer.singleShot(150, self._apply_output_device)
+        QTimer.singleShot(500, self._auto_start_monitor)
+        QTimer.singleShot(3000, self._init_updater)
+        QTimer.singleShot(600_000, self._daily_recheck)
 
-        self.title("AutoTrigger V10")
+    # ── build ───────────────────────────────────────────────────────────────────
 
-        self.geometry("900x640")
+    def _build(self):
+        root = QWidget(); root.setObjectName("root")
+        self.setCentralWidget(root)
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        self.minsize(720, 500)
+        outer.addWidget(self._build_topbar())
 
-        # Icone da janela
-        import os, sys
-        _base = sys._MEIPASS if getattr(sys, "frozen", False) else os.path.dirname(
-            os.path.abspath(__file__))
-        _ico = os.path.join(os.path.dirname(_base), "assets", "icon.ico")
-        if os.path.exists(_ico):
+        # corpo: splitter sidebar | stack
+        body = QSplitter(Qt.Horizontal)
+        body.setHandleWidth(1)
+        body.addWidget(self._build_sidebar())
+        self._stack = QStackedWidget()
+        self._detail = SequenceDetail(self._config, self._engine, self._on_seq_changed)
+        self._global = GlobalSettings(self._config, self._on_global_saved)
+        self._placeholder = self._build_placeholder()
+        self._stack.addWidget(self._placeholder)   # 0
+        self._stack.addWidget(self._detail)        # 1
+        self._stack.addWidget(self._global)        # 2
+        body.addWidget(self._stack)
+        body.setStretchFactor(0, 0)
+        body.setStretchFactor(1, 1)
+        body.setSizes([260, 780])
+        outer.addWidget(body, 1)
+
+        # log
+        outer.addWidget(self._build_logdock())
+
+        # status bar
+        self.statusBar().showMessage("Pronto.")
+        self.statusBar().setStyleSheet(
+            f"color:{COLORS['text_dim']}; background:{COLORS['bg1']};"
+            f" border-top:1px solid {COLORS['border']};")
+
+    def _build_topbar(self) -> QWidget:
+        bar = QFrame(); bar.setObjectName("topbar"); bar.setFixedHeight(56)
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(16, 8, 12, 8)
+        logo = QLabel("⚡  AutoTrigger V10")
+        logo.setObjectName("h1")
+        lay.addWidget(logo)
+        lay.addStretch(1)
+
+        self._monitor_dot = StatusDot("error")
+        self._monitor_lbl = QLabel("Monitor parado")
+        self._monitor_lbl.setObjectName("muted")
+        self._monitor_btn = QPushButton("▶  Iniciar Monitor")
+        self._monitor_btn.setObjectName("success")
+        self._monitor_btn.clicked.connect(self._toggle_monitor)
+        lay.addWidget(self._monitor_dot)
+        lay.addWidget(self._monitor_lbl)
+        lay.addSpacing(8)
+        lay.addWidget(self._monitor_btn)
+        lay.addSpacing(12)
+
+        self._update_btn = QPushButton(f"v{__version__}")
+        self._update_btn.setObjectName("ghost")
+        self._update_btn.clicked.connect(self._check_updates_manual)
+        lay.addWidget(self._update_btn)
+        return bar
+
+    def _build_sidebar(self) -> QWidget:
+        side = QFrame(); side.setObjectName("sidebar")
+        side.setMinimumWidth(220); side.setMaximumWidth(360)
+        lay = QVBoxLayout(side)
+        lay.setContentsMargins(10, 12, 10, 10)
+        lay.setSpacing(8)
+        title = QLabel("SEQUÊNCIAS"); title.setObjectName("section")
+        lay.addWidget(title)
+
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        host = QWidget()
+        self._cards_box = QVBoxLayout(host)
+        self._cards_box.setContentsMargins(0, 0, 0, 0)
+        self._cards_box.setSpacing(6)
+        self._cards_box.addStretch(1)
+        scroll.setWidget(host)
+        lay.addWidget(scroll, 1)
+
+        new_btn = QPushButton("＋  Nova Sequência")
+        new_btn.setObjectName("primary")
+        new_btn.clicked.connect(self._new_sequence)
+        lay.addWidget(new_btn)
+
+        cfg_btn = QPushButton("⚙  Configurações Globais")
+        cfg_btn.clicked.connect(self._show_global)
+        lay.addWidget(cfg_btn)
+        return side
+
+    def _build_placeholder(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.addStretch(1)
+        msg = QLabel("Selecione uma sequência à esquerda\nou crie uma nova.")
+        msg.setObjectName("dim")
+        msg.setAlignment(Qt.AlignCenter)
+        lay.addWidget(msg)
+        lay.addStretch(1)
+        return w
+
+    def _build_logdock(self) -> QWidget:
+        wrap = QFrame()
+        wrap.setStyleSheet(f"background:{COLORS['bg1']}; border-top:1px solid {COLORS['border']};")
+        wrap.setFixedHeight(180)
+        lay = QVBoxLayout(wrap)
+        lay.setContentsMargins(10, 6, 10, 8)
+        lay.setSpacing(4)
+        head = QLabel("📋  Log em tempo real")
+        head.setObjectName("dim")
+        lay.addWidget(head)
+        self._log = LogView()
+        lay.addWidget(self._log, 1)
+        return wrap
+
+    # ── engine signal slots (chamados via bridge na GUI thread) ──────────────────
+
+    def on_runner_update(self, seq_id: str, state_name: str, step_idx: int):
+        if seq_id in self._cards:
+            self._cards[seq_id].set_state(state_name)
+        if self._selected_id == seq_id and self._stack.currentWidget() is self._detail:
+            self._detail.set_runner_state(state_name, step_idx)
+
+    def on_tick(self, seq_id: str, step_idx: int, elapsed: float, total: float):
+        if self._selected_id == seq_id and self._stack.currentWidget() is self._detail:
+            self._detail.set_tick(step_idx, elapsed, total)
+
+    def on_log(self, msg: str, level: str = "info"):
+        self._log.append_line(msg, level)
+
+    # ── sequences ────────────────────────────────────────────────────────────────
+
+    def _load_sequences(self):
+        # limpa
+        for c in self._cards.values():
+            c.deleteLater()
+        self._cards.clear()
+        seqs = self._config.get_sequences()
+        for seq in seqs:
+            self._add_card(seq)
+        self._refresh_armed()
+        if seqs:
+            self._select_seq(seqs[0]["id"])
+        else:
+            self._stack.setCurrentWidget(self._placeholder)
+
+    def _add_card(self, seq: dict):
+        card = SequenceCard(seq, self._select_seq)
+        # insere antes do stretch
+        self._cards_box.insertWidget(self._cards_box.count() - 1, card)
+        self._cards[seq["id"]] = card
+
+    def _select_seq(self, seq_id: str):
+        seq = self._config.get_sequence_by_id(seq_id)
+        if not seq:
+            return
+        for sid, card in self._cards.items():
+            card.set_selected(sid == seq_id)
+        self._selected_id = seq_id
+        self._detail.set_sequence(seq)
+        self._stack.setCurrentWidget(self._detail)
+        runner = self._engine.get_runner(seq_id)
+        if runner:
+            self._detail.set_runner_state(runner.state.value, runner.current_step)
+
+    def _new_sequence(self):
+        seq = self._config.new_sequence_template()
+        self._config.add_sequence(seq)
+        self._config.save()
+        self._engine.reload_sequences()
+        self._add_card(seq)
+        self._refresh_armed()
+        self._select_seq(seq["id"])
+
+    def _on_seq_changed(self, seq: dict):
+        if seq["id"] in self._cards:
+            self._cards[seq["id"]].update_seq(seq)
+        self._refresh_armed()
+
+    def _refresh_armed(self):
+        for seq in self._config.get_sequences():
+            if seq["id"] in self._cards:
+                self._cards[seq["id"]].set_armed(self._engine.is_seq_armed_today(seq))
+
+    def _show_global(self):
+        for card in self._cards.values():
+            card.set_selected(False)
+        self._selected_id = None
+        self._global._load()
+        self._stack.setCurrentWidget(self._global)
+
+    def _on_global_saved(self):
+        self.on_log("Configurações globais salvas.", "success")
+        self._engine.reload_sequences()
+        self._apply_output_device()
+        self._refresh_armed()
+
+    # ── monitor ──────────────────────────────────────────────────────────────────
+
+    def _apply_output_device(self):
+        dev = self._config.get_global().get("default_output_device_id", "")
+        if dev:
             try:
-                self.iconbitmap(_ico)
+                self._player.set_output_device(dev)
             except Exception:
                 pass
 
-        self._build_ui()
-
-        self._connect_engine()
-
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-
-        self.after(300, self._load_sequences)
-
-        self.after(600, self._auto_start_monitor)
-
-        self.after(3000, self._init_updater)
-
-    # ── build ─────────────────────────────────────────────────────────────────
-
-    def _build_ui(self):
-
-        self.rowconfigure(1, weight=1)
-
-        self.columnconfigure(0, weight=1)
-
-        # ── Header ───────────────────────────────────────────────────────────
-
-        hdr = ctk.CTkFrame(
-
-            self, height=54, corner_radius=0,
-
-            fg_color=("#0d0d1f", "#0a0a18"),
-
-        )
-
-        hdr.grid(row=0, column=0, sticky="ew")
-
-        hdr.columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(
-
-            hdr,
-
-            text="  ⚡  AutoTrigger V10",
-
-            font=ctk.CTkFont(size=18, weight="bold"),
-
-            text_color="#4fc3f7",
-
-            anchor="w",
-
-        ).grid(row=0, column=0, sticky="w", padx=16, pady=10)
-
-        self._settings_btn = ctk.CTkButton(
-
-            hdr, text="⚙  Configurações", width=140, height=30,
-
-            fg_color="#1a2a3a", hover_color="#243444",
-
-            font=ctk.CTkFont(size=12),
-
-            command=self._open_settings,
-
-        )
-
-        self._settings_btn.grid(row=0, column=1, sticky="e", padx=(4, 4), pady=12)
-
-        self._update_btn = ctk.CTkButton(
-
-            hdr, text=f"v{__version__}", width=80, height=28,
-
-            fg_color="transparent", hover_color="#1a1a3a",
-
-            text_color="#555577", font=ctk.CTkFont(size=11),
-
-            command=self._check_for_updates_manual,
-
-        )
-
-        self._update_btn.grid(row=0, column=2, sticky="e", padx=(0, 8), pady=12)
-
-        # ── Journey View ─────────────────────────────────────────────────────
-
-        self._journey = JourneyView(self, fg_color="transparent")
-
-        self._journey.grid(row=1, column=0, sticky="nsew")
-
-        self._journey.set_on_cancel(self._engine.cancel)
-
-        self._journey.set_on_select(self._on_seq_selected)
-
-        self._journey.set_on_new(self._new_sequence)
-
-        # ── Status bar ───────────────────────────────────────────────────────
-
-        statusbar = ctk.CTkFrame(
-
-            self, height=40, corner_radius=0,
-
-            fg_color=("#0a0a1a", "#070710"),
-
-        )
-
-        statusbar.grid(row=2, column=0, sticky="ew")
-
-        statusbar.columnconfigure(1, weight=1)
-
-        self._monitor_btn = ctk.CTkButton(
-
-            statusbar, text="▶  Iniciar Monitor", width=160, height=28,
-
-            fg_color="#1b5e20", hover_color="#0a3d12",
-
-            font=ctk.CTkFont(size=12),
-
-            command=self._toggle_monitor,
-
-        )
-
-        self._monitor_btn.grid(row=0, column=0, padx=(10, 6), pady=6, sticky="w")
-
-        self._monitor_dot = ctk.CTkLabel(
-
-            statusbar, text="●  Monitor parado",
-
-            text_color="#ff4444",
-
-            font=ctk.CTkFont(size=12),
-
-        )
-
-        self._monitor_dot.grid(row=0, column=1, padx=8, pady=6, sticky="w")
-
-        self._statusbar_var = ctk.StringVar(value="  Pronto.")
-
-        ctk.CTkLabel(
-
-            statusbar,
-
-            textvariable=self._statusbar_var,
-
-            text_color="#445566",
-
-            font=ctk.CTkFont(size=11),
-
-            anchor="e",
-
-        ).grid(row=0, column=2, padx=16, pady=6, sticky="e")
-
-    # ── engine connection ─────────────────────────────────────────────────────
-
-    def _connect_engine(self):
-
-        def _on_update(seq_id: str, state_name: str, step_idx: int):
-
-            self.after(0, lambda: self._journey.set_runner_state(
-
-                seq_id, state_name, step_idx
-
-            ))
-
-        def _on_tick(seq_id: str, step_idx: int, elapsed: float, total: float):
-
-            self.after(0, lambda: self._journey.set_tick(
-
-                seq_id, step_idx, elapsed, total
-
-            ))
-
-        def _log(msg: str, level: str = "info"):
-
-            self.after(0, lambda: self._journey.log(msg, level))
-
-        self._engine.set_on_runner_update(_on_update)
-
-        self._engine.set_on_tick(_on_tick)
-
-        self._engine.set_log(_log)
-
-    # ── sequence management ───────────────────────────────────────────────────
-
-    def _load_sequences(self):
-
-        seqs = self._config.get_sequences()
-
-        self._journey.load_sequences(seqs)
-
-    def _on_seq_selected(self, seq_id: str):
-
-        seq = self._config.get_sequence_by_id(seq_id)
-
-        if not seq:
-
-            return
-
-        self._journey.select_sequence(seq)
-
-        runner = self._engine.get_runner(seq_id)
-
-        if runner:
-
-            self._journey.set_runner_state(seq_id, runner.state.value, runner.current_step)
-
-    def _new_sequence(self):
-
-        seq = self._config.new_sequence_template()
-
-        self._open_sequence_editor(seq, is_new=True)
-
-    # ── monitor ───────────────────────────────────────────────────────────────
-
     def _auto_start_monitor(self):
-
         if self._config.get_global().get("txt_file_path", ""):
-
             self._do_start_monitor()
 
     def _toggle_monitor(self):
-
         if self._engine.is_monitor_running():
-
             self._engine.stop_monitor()
-
-            self._monitor_btn.configure(
-                text="▶  Iniciar Monitor",
-
-                fg_color="#1b5e20", hover_color="#0a3d12",
-
-            )
-
-            self._monitor_dot.configure(text="●  Monitor parado", text_color="#ff4444")
-
-            self._journey.log("Monitor parado.", "warn")
-
+            self._monitor_btn.setText("▶  Iniciar Monitor")
+            self._monitor_btn.setObjectName("success")
+            self._monitor_btn.setStyleSheet("")  # reaplica QSS por objectName
+            self._monitor_dot.set_state("error")
+            self._monitor_lbl.setText("Monitor parado")
+            self.on_log("Monitor parado.", "warn")
         else:
-
             self._do_start_monitor()
+        self._restyle(self._monitor_btn)
 
     def _do_start_monitor(self):
-
-        ok = self._engine.start_monitor()
-
-        if ok:
-
-            self._monitor_btn.configure(
-
-                text="⏹  Parar Monitor",
-
-                fg_color="#7f0000", hover_color="#560000",
-
-            )
-
-            self._monitor_dot.configure(text="●  Monitor ativo", text_color="#00e676")
-
-            txt = self._config.get_global().get("txt_file_path", "")
-
-            self._journey.log(f"Monitor ativo: {txt}", "success")
-
+        if self._engine.start_monitor():
+            self._monitor_btn.setText("⏹  Parar Monitor")
+            self._monitor_btn.setObjectName("danger")
+            self._monitor_dot.set_state("running")
+            self._monitor_lbl.setText("Monitor ativo")
+            self.on_log(f"Monitor ativo: {self._config.get_global().get('txt_file_path','')}",
+                        "success")
         else:
+            self.on_log("Falha ao iniciar monitor. Verifique o caminho do TXT.", "error")
+        self._restyle(self._monitor_btn)
 
-            self._journey.log(
+    @staticmethod
+    def _restyle(w):
+        w.style().unpolish(w); w.style().polish(w)
 
-                "Falha ao iniciar monitor. Verifique o caminho do TXT nas configurações.",
+    def _daily_recheck(self):
+        try:
+            self._engine.reload_sequences()
+            self._refresh_armed()
+        finally:
+            QTimer.singleShot(600_000, self._daily_recheck)
 
-                "error",
-
-            )
-
-    # ── settings / editor ────────────────────────────────────────────────────
-
-    def _open_settings(self):
-
-        from ui.settings_window import SettingsWindow
-
-        SettingsWindow(
-
-            self,
-
-            config=self._config,
-
-            on_saved=self._on_settings_saved,
-
-            on_edit_sequence=self._open_sequence_editor,
-
-        )
-
-    def _open_sequence_editor(self, seq: dict, is_new: bool = False):
-
-        from ui.sequence_editor import SequenceEditor
-
-        SequenceEditor(
-
-            self,
-
-            seq=seq,
-
-            on_save=lambda s: self._on_seq_saved(s, is_new),
-
-        )
-
-    def _on_settings_saved(self):
-
-        self._journey.log("Configurações salvas.", "success")
-
-        self._engine.reload_sequences()
-
-        self._load_sequences()
-
-    def _on_seq_saved(self, seq: dict, is_new: bool):
-
-        if is_new:
-
-            self._config.add_sequence(seq)
-
-        else:
-
-            self._config.update_sequence(seq)
-
-        self._config.save()
-
-        self._journey.update_card(seq)
-
-        self._engine.reload_sequences()
-
-        self._journey.log(f"Sequência '{seq.get('name', '')}' salva.", "success")
-
-    # ── auto-update ───────────────────────────────────────────────────────────
+    # ── updater ──────────────────────────────────────────────────────────────────
 
     def _init_updater(self):
-
         try:
-
             from updater import Updater
-
-            self._updater = Updater(
-
-                log_callback=lambda msg, level="info": self._journey.log(msg, level)
-
+            self._updater = Updater(log_callback=self.on_log)
+            self._updater.check_async(
+                on_update_available=lambda info: self._show_update_badge(info)
             )
-
-            def _on_available(info):
-
-                self.after(0, lambda: self._show_update_badge(info))
-
-            self._updater.check_async(on_update_available=_on_available)
-
         except Exception as exc:
-
-            self._journey.log(f"Auto-update: {exc}", "warn")
+            self.on_log(f"Auto-update: {exc}", "warn")
 
     def _show_update_badge(self, info):
-
         self._pending_update = info
+        self._update_btn.setText(f"🔔 v{info.version} disponível")
+        self._update_btn.setObjectName("primary")
+        self._restyle(self._update_btn)
 
-        self._update_btn.configure(
-
-            text=f"🔔 v{info.version} disponível",
-
-            fg_color="#1565c0", hover_color="#0d47a1",
-
-            text_color="#ffffff", width=180,
-
-        )
-
-        self._journey.log(
-
-            f"Nova versão disponível: v{info.version} — clique no botão para instalar.",
-
-            "success",
-
-        )
-
-    def _check_for_updates_manual(self):
-
+    def _check_updates_manual(self):
         if self._pending_update:
-
             self._open_update_dialog(self._pending_update)
-
             return
-
-        self._update_btn.configure(text="Verificando...", state="disabled")
-
-        try:
-
-            from updater import Updater
-
-            u = Updater(
-
-                log_callback=lambda msg, level="info": self._journey.log(msg, level)
-
-            )
-
-            def _found(info):
-
-                self.after(0, lambda: [
-
-                    self._update_btn.configure(state="normal"),
-
-                    self._show_update_badge(info),
-
-                    self._open_update_dialog(info),
-
-                ])
-
-            def _none():
-
-                self.after(0, lambda: self._update_btn.configure(
-
-                    text=f"v{__version__} ✓", state="normal", text_color="#66bb6a",
-
-                ))
-
-                self.after(3000, lambda: self._update_btn.configure(
-
-                    text=f"v{__version__}", text_color="#555577"
-
-                ))
-
-            u.check_async(
-
-                on_update_available=_found,
-
-                on_up_to_date=_none,
-
-                on_error=lambda _e: self.after(0, lambda: self._update_btn.configure(
-
-                    text=f"v{__version__}", state="normal", text_color="#555577"
-
-                )),
-
-            )
-
-        except Exception:
-
-            self._update_btn.configure(text=f"v{__version__}", state="normal")
+        if not self._updater:
+            return
+        self._update_btn.setText("Verificando…")
+        self._updater.check_async(
+            on_update_available=lambda info: [self._show_update_badge(info),
+                                              self._open_update_dialog(info)],
+            on_up_to_date=lambda: self._update_btn.setText(f"v{__version__} ✓"),
+            on_error=lambda _e: self._update_btn.setText(f"v{__version__}"),
+        )
 
     def _open_update_dialog(self, info):
-
         from ui.update_dialog import UpdateDialog
+        UpdateDialog(self, info, on_confirm=self._updater.apply_update).exec()
 
-        UpdateDialog(self, info, on_confirm=self._updater.apply_update)
-
-    # ── lifecycle ─────────────────────────────────────────────────────────────
+    # ── lifecycle ────────────────────────────────────────────────────────────────
 
     def log(self, msg: str, level: str = "info"):
+        self.on_log(msg, level)
 
-        """Public log used by main.py."""
-
-        self._journey.log(msg, level)
-
-    def show(self):
-
-        self.deiconify()
-
-        self.lift()
-
-    def _on_close(self):
-
-        self.withdraw()
-
+    def closeEvent(self, event):
+        # Fecha para a bandeja (não encerra). main.py controla o quit real via tray.
+        event.ignore()
+        self.hide()

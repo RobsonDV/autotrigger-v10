@@ -5,10 +5,12 @@ Estados:
   IDLE → RUNNING → DONE | ERROR | CANCELLED
 """
 import threading
+import time
 from enum import Enum
 from typing import Callable, Optional
 
 from step_runner import StepRunner
+from timeparse import fmt_secs
 
 
 class RunnerState(Enum):
@@ -25,10 +27,12 @@ class SequenceRunner:
         seq_dict: dict,
         step_runner: StepRunner,
         log_callback: Optional[Callable] = None,
+        dry_run: bool = False,
     ):
         self._seq = seq_dict
         self._step_runner = step_runner
         self._log = log_callback or (lambda msg, level="info": print(f"[Runner] {msg}"))
+        self._dry_run = dry_run
         self._state = RunnerState.IDLE
         self._current_step = -1
         self._stop_event = threading.Event()
@@ -97,6 +101,28 @@ class SequenceRunner:
         steps = self._seq.get("steps", [])
         n = len(steps)
         name = self._seq.get("name", self.seq_id)
+        if self._dry_run:
+            self._log(f"🧪 ENSAIO de '{name}' — nada será mutado/disparado de verdade.", "warn")
+
+        # ── Atraso após o gatilho (delay) ──────────────────────────────────────
+        delay = int(self._seq.get("trigger_delay_seconds", 0) or 0)
+        if self._dry_run:
+            delay = min(delay, 3)
+        if delay > 0:
+            self._log(f"⏳ Aguardando {fmt_secs(delay)} antes de iniciar…", "info")
+            elapsed = 0.0
+            while elapsed < delay and not self._stop_event.is_set():
+                time.sleep(1.0)
+                elapsed += 1.0
+                if self._on_tick:
+                    try:
+                        self._on_tick(-1, elapsed, float(delay))
+                    except Exception:
+                        pass
+            if self._stop_event.is_set():
+                self._log(f"⏹ Sequência '{name}' cancelada no atraso.", "warn")
+                self._notify(RunnerState.CANCELLED, -1)
+                return
 
         for i, step in enumerate(steps):
             if self._stop_event.is_set():
@@ -116,6 +142,8 @@ class SequenceRunner:
                 self._stop_event,
                 on_tick=_tick,
                 keyword_waiter=self._keyword_waiter,
+                dry_run=self._dry_run,
+                preview_cap=8 if self._dry_run else 0,
             )
 
             if not ok:

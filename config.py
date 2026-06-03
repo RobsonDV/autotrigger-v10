@@ -13,10 +13,57 @@ Migração automática de v1 (keys planas) → v2 na primeira carga.
 """
 import json
 import os
+import sys
 import uuid
 
+
+def _resolve_config_file() -> str:
+    """
+    Determina onde ler/gravar config.json de forma que persista.
+
+    - Frozen (.exe onefile): grava ao lado do executável (pasta de instalação,
+      onde o installer já coloca config.json e onde o app — rodando como admin —
+      pode escrever). Se não for gravável, cai para %APPDATA%\\AutoTriggerV10.
+    - Dev: ao lado deste arquivo.
+    """
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+        candidate = os.path.join(exe_dir, "config.json")
+        if _is_dir_writable(exe_dir):
+            return candidate
+        appdata = os.environ.get("APPDATA") or exe_dir
+        fallback_dir = os.path.join(appdata, "AutoTriggerV10")
+        try:
+            os.makedirs(fallback_dir, exist_ok=True)
+        except OSError:
+            return candidate
+        fallback = os.path.join(fallback_dir, "config.json")
+        # Migra config existente ao lado do exe (instalado) na 1ª vez
+        if not os.path.exists(fallback) and os.path.exists(candidate):
+            try:
+                import shutil
+                shutil.copy2(candidate, fallback)
+            except Exception:
+                pass
+        return fallback
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, "config.json")
+
+
+def _is_dir_writable(path: str) -> bool:
+    test = os.path.join(path, ".write_test.tmp")
+    try:
+        with open(test, "w") as f:
+            f.write("")
+        os.remove(test)
+        return True
+    except Exception:
+        return False
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+CONFIG_FILE = _resolve_config_file()
 
 DEFAULT_GLOBAL = {
     "txt_file_path": "",
@@ -91,24 +138,56 @@ class Config:
         self.load()
 
     def load(self):
-        if os.path.exists(CONFIG_FILE):
+        loaded = self._read_file(CONFIG_FILE)
+        if loaded is None:
+            # Tenta o backup se o principal corrompeu/sumiu
+            loaded = self._read_file(CONFIG_FILE + ".bak")
+            if loaded is not None:
+                print("[Config] Recuperado do backup config.json.bak.")
+        if loaded is None:
+            return
+        if loaded.get("version", 1) < 2:
+            loaded = _migrate_v1(loaded)
+            self._data = loaded
+            print("[Config] Migrado de v1 → v2.")
             try:
-                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                if loaded.get("version", 1) < 2:
-                    loaded = _migrate_v1(loaded)
-                    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                        json.dump(loaded, f, indent=2, ensure_ascii=False)
-                    print("[Config] Migrado de v1 → v2.")
-                self._data = loaded
-            except Exception as exc:
-                print(f"[Config] Erro ao carregar config.json: {exc}. Usando padrões.")
+                self.save()
+            except Exception:
+                pass
+            return
+        self._data = loaded
+
+    def _read_file(self, path: str):
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as exc:
+            print(f"[Config] Erro ao ler '{path}': {exc}")
+            return None
 
     def save(self):
+        """Escrita atômica: grava .tmp, faz backup .bak e troca por os.replace."""
+        tmp = CONFIG_FILE + ".tmp"
         try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self._data, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            if os.path.exists(CONFIG_FILE):
+                try:
+                    import shutil
+                    shutil.copy2(CONFIG_FILE, CONFIG_FILE + ".bak")
+                except Exception:
+                    pass
+            os.replace(tmp, CONFIG_FILE)
         except Exception as exc:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
             raise RuntimeError(f"Erro ao salvar configuração: {exc}") from exc
 
     # ── global ───────────────────────────────────────────────────────────────
@@ -166,5 +245,7 @@ class Config:
             "name": "Nova Sequência",
             "keyword_trigger": "",
             "enabled": True,
+            "trigger_delay_seconds": 0,
+            "schedule": {"mode": "always", "weekdays": [], "dates": []},
             "steps": [],
         }

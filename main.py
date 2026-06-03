@@ -1,10 +1,9 @@
 """
-AutoTrigger V10 — Entry point.
-Inicializa todas as dependencias e inicia a UI.
+AutoTrigger V10 — Entry point (PySide6/Qt).
+Inicializa logging, backend, ponte de threads, janela e bandeja.
 """
 import sys
 import os
-import threading
 
 # Compatibilidade com PyInstaller (recursos bundled)
 if getattr(sys, "frozen", False):
@@ -12,126 +11,125 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Inicializar COM antes de qualquer import de pycaw
+
+def _setup_bundled_vlc():
+    """Aponta o python-vlc para o libVLC embutido no .exe (antes de importar vlc)."""
+    if not getattr(sys, "frozen", False):
+        return
+    libvlc = os.path.join(BASE_DIR, "libvlc.dll")
+    plugins = os.path.join(BASE_DIR, "plugins")
+    if os.path.exists(libvlc):
+        os.environ["PYTHON_VLC_LIB_PATH"] = libvlc
+        os.environ["PATH"] = BASE_DIR + os.pathsep + os.environ.get("PATH", "")
+        try:
+            os.add_dll_directory(BASE_DIR)
+        except Exception:
+            pass
+    if os.path.isdir(plugins):
+        os.environ["PYTHON_VLC_MODULE_PATH"] = plugins
+        os.environ["VLC_PLUGIN_PATH"] = plugins
+
+
+_setup_bundled_vlc()
+
+# COM antes de qualquer import de pycaw
 import comtypes
 try:
     comtypes.CoInitialize()
 except OSError:
     pass
 
-import customtkinter as ctk
+import applog
+applog.init()
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon, QAction
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 
 from config import Config
 import audio_manager as _audio
-import hotkey_sender as _hotkey
 from player import AudioPlayer
 from file_monitor import FileMonitor
 from sequence_engine import SequenceEngine
-from ui.main_window import MainWindow
+from ui.theme import apply_theme
+from ui.qt_bridge import EngineBridge
+from ui.main_window import MainWindow, _asset_icon
 
 
-# ── Tray icon ─────────────────────────────────────────────────────────────────
+def _build_tray(app, window, on_quit) -> QSystemTrayIcon:
+    icon = _asset_icon() or window.windowIcon()
+    tray = QSystemTrayIcon(icon, parent=app)
+    tray.setToolTip("AutoTrigger V10")
+    menu = QMenu()
+    act_open = QAction("Abrir", menu)
+    act_open.triggered.connect(lambda: (window.showNormal(), window.raise_(),
+                                        window.activateWindow()))
+    act_quit = QAction("Sair", menu)
+    act_quit.triggered.connect(on_quit)
+    menu.addAction(act_open)
+    menu.addSeparator()
+    menu.addAction(act_quit)
+    tray.setContextMenu(menu)
 
-def _build_tray_icon(window: MainWindow, on_quit):
-    """Cria o ícone da bandeja do sistema."""
-    try:
-        import pystray
-        from PIL import Image, ImageDraw
-    except ImportError:
-        print("[Tray] pystray/Pillow não disponível. Ícone na bandeja desabilitado.")
-        return None
+    def _activated(reason):
+        if reason == QSystemTrayIcon.Trigger:  # clique simples
+            window.showNormal(); window.raise_(); window.activateWindow()
 
-    # Tentar carregar icon.ico; gerar programaticamente caso não exista
-    icon_path = os.path.join(BASE_DIR, "assets", "icon.ico")
-    if os.path.exists(icon_path):
-        try:
-            img = Image.open(icon_path)
-        except Exception:
-            img = _make_icon()
-    else:
-        img = _make_icon()
+    tray.activated.connect(_activated)
+    tray.show()
+    return tray
 
-    def _show(icon, _item):
-        icon.stop()
-        window.after(0, window.show)
-
-    def _quit(icon, _item):
-        icon.stop()
-        window.after(0, on_quit)
-
-    menu = pystray.Menu(
-        pystray.MenuItem("Abrir", _show, default=True),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Sair", _quit),
-    )
-
-    return pystray.Icon("autotrigger_v10", img, "AutoTrigger V10", menu)
-
-
-def _make_icon():
-    """Gera o icone de automacao do AutoTrigger V10 via create_icon."""
-    try:
-        from create_icon import draw_icon
-        return draw_icon(64)
-    except Exception:
-        # Fallback minimo
-        from PIL import Image, ImageDraw
-        size = 64
-        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        d = ImageDraw.Draw(img)
-        d.ellipse([2, 2, size - 2, size - 2], fill="#0e1634")
-        d.ellipse([8, 8, size - 8, size - 8], outline="#00b4ff", width=4)
-        return img
-    return img
-
-
-# ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    ctk.set_appearance_mode("dark")
-    ctk.set_default_color_theme("blue")
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)  # fecha p/ bandeja
+    apply_theme(app)
+    ico = _asset_icon()
+    if ico:
+        app.setWindowIcon(ico)
 
     config = Config()
     player = AudioPlayer()
     file_monitor = FileMonitor()
     engine = SequenceEngine(config, player, file_monitor)
 
-    window = MainWindow(config=config, engine=engine, player=player)
+    # Ponte de threads: callbacks do backend → signals na GUI thread
+    bridge = EngineBridge()
+    applog.set_ui_sink(bridge.on_log)
+    engine.set_log(applog.log)
+    try:
+        player.set_log(applog.log)
+    except Exception:
+        pass
+    engine.set_on_runner_update(bridge.on_runner_update)
+    engine.set_on_tick(bridge.on_tick)
 
-    # ── Cleanup ──
+    window = MainWindow(config=config, engine=engine, player=player)
+    bridge.runner_update.connect(window.on_runner_update)
+    bridge.tick.connect(window.on_tick)
+    bridge.log_message.connect(window.on_log)
+
+    # Verificação VLC
+    if not player.is_vlc_available():
+        window.on_log("AVISO: VLC não disponível. Reprodução/stream desabilitados.", "error")
+
     def _quit():
-        file_monitor.stop()
-        engine.cancel_all()
-        engine.stop_monitor()
         try:
+            file_monitor.stop()
+            engine.cancel_all()
+            engine.stop_monitor()
+            _audio.restore_app_mutes()
             player.release()
         except Exception:
             pass
-        window.destroy()
+        tray.hide()
+        app.quit()
 
     window._quit_fn = _quit
+    tray = _build_tray(app, window, _quit)
 
-    # ── Tray ──
-    tray = _build_tray_icon(window, _quit)
-    if tray:
-        tray_thread = threading.Thread(target=tray.run, daemon=True, name="tray")
-        tray_thread.start()
-
-    # ── Verificação VLC ──
-    if not player.is_vlc_available():
-        window.log(
-            "AVISO: VLC não encontrado. Instale o VLC (https://www.videolan.org) para habilitar o player.",
-            "error",
-        )
-
-    window.mainloop()
-
-    # Cleanup ao fechar pela janela (quando não usa tray)
-    file_monitor.stop()
-    try:
-        player.release()
-    except Exception:
-        pass
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

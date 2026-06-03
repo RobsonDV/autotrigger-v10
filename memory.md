@@ -1,29 +1,37 @@
-# MaisNova Sport Trigger — Memória do Projeto
+# AutoTrigger V10 — Memória do Projeto
 
 > **Arquivo vivo.** Atualizado a cada sessão de desenvolvimento.  
 > Contém todo o histórico de decisões, tecnologias, bugs resolvidos e planos futuros.  
-> Última atualização: 2026-06-02
+> Última atualização: 2026-06-03 — **v2.1.0**
+
+> ⚠️ **Nota histórica:** o projeto nasceu como *MaisNova Sport Trigger* (v1.0, fluxo
+> fixo da Jornada Esportiva). Na **v2.0** virou **AutoTrigger V10**, um motor de
+> sequências genérico. Seções abaixo já refletem a arquitetura v2+.
 
 ---
 
 ## 1. Visão Geral do Produto
 
-**Nome:** MaisNova Sport Trigger  
+**Nome:** AutoTrigger V10 (antigo MaisNova Sport Trigger)  
 **Plataforma:** Windows (desktop, standalone .exe)  
-**Propósito:** Automação do bloco esportivo em rádios ao vivo.
+**Propósito:** Automação genérica de blocos de áudio/comandos disparados por
+palavras-chave lidas de um arquivo TXT (caso de uso original: bloco esportivo em
+rádio ao vivo).
 
 ### O Problema que Resolve
-Durante a Jornada Esportiva ao vivo, o operador de áudio precisa:
+O app monitora um arquivo TXT que o software de rádio atualiza com a mídia em
+exibição. Quando uma **keyword** aparece no TXT, ele dispara uma **sequência** de
+etapas configuráveis. Exemplo da Jornada Esportiva:
 - Mutar o microfone (para não vazar áudio da rádio esportiva parceira)
 - Parar a programação local (hotkey no software de rádio)
 - Tocar uma vinheta de entrada
 - Ligar o stream da rádio esportiva por tempo fixo
 - Tocar uma vinheta de encerramento
 - Retomar a programação local (hotkey PLAY)
-- Aguardar sinal de retorno no arquivo TXT
-- Parar o stream esportivo e desmutar o microfone
+- Aguardar a keyword de retorno no TXT
+- Parar o stream e desmutar o microfone
 
-O app faz **tudo isso automaticamente** monitorando um arquivo TXT que o software de rádio atualiza com o nome da mídia em exibição.
+Tudo isso vira uma lista de etapas editável na UI — **não é mais hardcoded**.
 
 ### Contexto de Uso
 - **Rádio:** MaisNova / Terra FM (97,7 MHz – região amazônica)
@@ -42,15 +50,26 @@ O app faz **tudo isso automaticamente** monitorando um arquivo TXT que o softwar
 | Biblioteca | Versão | Função |
 |---|---|---|
 | Python | 3.11 | Linguagem principal |
-| CustomTkinter | ≥ 5.2.0 | UI moderna (tema dark) |
+| **PySide6 (Qt 6)** | ≥ 6.6.0 | **UI (v2.2+)** — janela única, QSS, tray nativo |
 | pycaw | ≥ 20230407 | Windows Core Audio API — mute/unmute |
 | comtypes | ≥ 1.4.1 | COM initialization (necessário para pycaw) |
 | python-vlc | ≥ 3.0.21203 | Reprodução de áudio (arquivos + streams M3U) |
 | watchdog | ≥ 4.0.0 | Monitoramento em tempo real do arquivo TXT |
 | keyboard | ≥ 0.13.5 | Envio e captura de hotkeys globais |
-| pystray | ≥ 0.19.5 | Ícone na bandeja do sistema |
-| Pillow | ≥ 10.0.0 | Geração programática do ícone da bandeja |
+| pywin32 | ≥ 306 | Foco de janela alvo p/ hotkey (win32gui) |
+| Pillow | ≥ 10.0.0 | Geração do ícone no build (create_icon.py) |
 | PyInstaller | ≥ 6.0.0 | Empacotamento em .exe standalone |
+
+> **v2.2:** UI migrada de **CustomTkinter → PySide6/Qt**. `customtkinter` e
+> `pystray` foram **removidos** (tray agora é `QSystemTrayIcon`). Todo o backend
+> Python permaneceu igual.
+
+### Por que PySide6/Qt (v2.2)?
+- CustomTkinter atingiu o teto visual (estilização/animação limitadas, modais
+  empilhados). Qt dá QSS completo, janela única mestre-detalhe, tray nativo e é
+  muito mais robusto — mantendo 100% do backend Python.
+- **Ponte de threads:** `ui/qt_bridge.py` (QObject com signals) marshaliza os
+  callbacks do engine (worker threads) para a GUI thread. Substitui o `after()`.
 
 ### Por que VLC (python-vlc) e não pygame/simpleaudio?
 - VLC suporta nativamente M3U, HLS e streams HTTP
@@ -63,78 +82,113 @@ O app faz **tudo isso automaticamente** monitorando um arquivo TXT que o softwar
 
 ---
 
-## 3. Estrutura de Arquivos
+## 3. Estrutura de Arquivos (v2.1)
 
 ```
 Jornada_Maisnova/
-├── main.py               # Entry point — inicializa tudo, tray icon, lifecycle
-├── version.py            # Fonte única da versão (__version__, GITHUB_REPO, GITHUB_ASSET_NAME)
-├── config.py             # Carrega/salva config.json; DEFAULT_CONFIG; classe Config
-├── config.json           # Configuração persistida pelo usuário
-├── audio_manager.py      # Mute/unmute via pycaw (list_input/output_devices)
+├── main.py               # Entry point — wiring, tray, lifecycle, env do libVLC
+├── version.py            # Fonte única da versão (__version__, GITHUB_REPO, ASSET)
+├── config.py             # Config schema v2 (global + sequences); persistência robusta
+├── config.json           # Configuração persistida (schema v2)
+├── timeparse.py          # parse/format de tempo (h/m/s) + is_armed_today (agenda)
+├── applog.py             # NOVO (v2.2) — logging em arquivo + UI sink + excepthooks
+├── audio_manager.py      # Mute/unmute via pycaw + ledger _muted_by_app / restore_app_mutes
 ├── player.py             # AudioPlayer — reprodução VLC (arquivo + stream M3U)
-├── sequence.py           # Máquina de estados da Jornada Esportiva (8 estados)
-├── file_monitor.py       # Watchdog — monitora TXT e dispara triggers
-├── hotkey_sender.py      # send_hotkey() e capture_hotkey() via keyboard lib
-├── updater.py            # Auto-update: consulta GitHub API, baixa .exe, instala via batch
-├── requirements.txt      # Dependências pip
-├── version_info.txt      # Metadados do .exe para Windows Explorer (PyInstaller)
-├── build.bat             # Compila + publica GitHub Release automaticamente
-├── run.bat               # Atalho para rodar em dev
-├── memory.md             # Este arquivo — documentação viva do projeto
-├── assets/
-│   └── icon.ico          # Ícone da aplicação
-└── ui/
-    ├── __init__.py
-    ├── main_window.py    # Janela principal CTk + abas + header com botão de versão
-    ├── config_tab.py     # Aba de configurações completa
-    ├── log_tab.py        # Aba de log + painel visual da sequência
-    └── update_dialog.py  # Dialog de atualização: notas de versão + barra de progresso
+├── file_monitor.py       # Watchdog — keyword_map dinâmico (register/unregister)
+├── hotkey_sender.py      # send_hotkey + send_hotkey_to_window (pywin32) + list_window_titles
+├── step_runner.py        # Executa UMA etapa (mute/hotkey/play_audio/stream/wait_*)
+├── sequence_runner.py    # Executa UMA sequência em thread; aplica trigger_delay
+├── sequence_engine.py    # Orquestra N sequências; arma triggers conforme agenda
+├── updater.py            # Auto-update via GitHub Releases
+├── requirements.txt      # Dependências pip (inclui pywin32)
+├── version_info.txt      # Metadados do .exe (PyInstaller)
+├── build.bat             # Compila AutoTriggerV10.exe (embute libVLC) + publica release
+├── installer.iss         # Inno Setup (VLC embutido — não baixa mais)
+├── memory.md             # Este arquivo
+├── assets/               # icon.ico, banners do wizard
+└── ui/  (PySide6/Qt — v2.2)
+    ├── theme.py          # tokens de cor + folha QSS (estética broadcast console)
+    ├── qt_bridge.py      # EngineBridge: signals que levam callbacks p/ a GUI thread
+    ├── widgets.py        # TimeField, LogView, StatusDot, Chip, helpers
+    ├── main_window.py    # QMainWindow: top bar, sidebar, stack (detalhe/global), log, tray
+    ├── sequence_detail.py# Painel mestre-detalhe: edição inline + agenda + etapas + run/ensaio
+    ├── step_editor.py    # Editor de UMA etapa, inline (sem pop-up)
+    ├── global_settings.py# Configurações globais inline (TXT + dispositivos, com cache)
+    └── update_dialog.py  # Dialog de atualização (Qt)
 ```
+> Removidos na v2.2 (eram CustomTkinter): `journey_view.py`, `sequence_editor.py`,
+> `settings_window.py`, `config_tab.py`, `log_tab.py`.
 
 ---
 
-## 4. Arquitetura e Padrões de Design
+## 4. Arquitetura e Padrões de Design (v2)
 
-### Máquina de Estados (sequence.py)
+### Motor de Sequências (substitui a máquina de estados fixa da v1)
+- **`SequenceEngine`** registra, no `FileMonitor`, a `keyword_trigger` de cada
+  sequência **habilitada e armada hoje** (`timeparse.is_armed_today`). Ao detectar
+  a keyword, instancia um **`SequenceRunner`**.
+- **`SequenceRunner`** roda a sequência em daemon thread `seq-<id>`. Antes do loop,
+  aplica o **`trigger_delay_seconds`** (atraso pós-gatilho, cancelável). Para cada
+  etapa chama o **`StepRunner`**.
+- **`StepRunner.run_step`** executa o tipo da etapa. Tipos:
+  `mute`/`unmute`/`open_channel`/`close_channel`, `hotkey`, `play_audio`,
+  `stream`, `wait_time`, `wait_keyword`.
+- `wait_keyword` usa um *keyword_waiter* temporário registrado no FileMonitor
+  (`SequenceEngine._make_keyword_waiter`).
+
+### Config schema v2 (`config.py`)
 ```
-IDLE → MUTING → AUDIO1 → STREAMING → AUDIO2 → PLAY_CMD → WAITING_NEXT
-                                                                  ↓
-                                                           STOP_RETURN → IDLE
+{ "version": 2,
+  "global": { txt_file_path, default_input_device_*, default_output_device_* },
+  "sequences": [ { id, name, keyword_trigger, enabled,
+                   trigger_delay_seconds, schedule, steps:[...] } ] }
 ```
+- Migração automática de v1 (`_migrate_v1`).
+- `schedule = {"mode":"always"|"weekdays"|"dates","weekdays":[0..6],"dates":[...]}`.
+- **Persistência (corrigida na v2.1):** `_resolve_config_file()` grava ao lado do
+  `sys.executable` quando frozen (ou `%APPDATA%\AutoTriggerV10` como fallback), e
+  ao lado do `.py` em dev.
 
-| Estado | O que acontece |
-|---|---|
-| `IDLE` | Aguardando keyword no TXT |
-| `MUTING` | Muta input device + envia hotkey STOP |
-| `AUDIO1` | Toca Vinheta 1 (aguarda terminar) |
-| `STREAMING` | Toca stream M3U por `stream_duration` segundos |
-| `AUDIO2` | Toca Vinheta 2 (aguarda terminar) |
-| `PLAY_CMD` | Envia hotkey PLAY |
-| `WAITING_NEXT` | Aguarda keyword de retorno no TXT |
-| `STOP_RETURN` | Envia hotkey STOP + desmuta input → IDLE |
+### Áudio (`audio_manager.py`)
+- `set_device_mute(id, mute)` mantém o ledger `_muted_by_app`.
+- `restore_app_mutes()` (chamado no fechamento) desmuta **só** o que o app mutou.
 
-### Threading
-- Sequência roda em daemon thread `sport-sequence`
-- Retorno roda em daemon thread `sport-return`
-- FileMonitor roda o Watchdog em thread própria
-- `threading.Event` para sincronização entre steps
-- `cancel_event` para interrupção segura a qualquer momento
-- `comtypes.CoInitialize()` chamado em cada thread que usa pycaw
+### Hotkeys (`hotkey_sender.py`)
+- `send_hotkey()` → janela em foco.
+- `send_hotkey_to_window(hk, title)` → foca a janela alvo (pywin32), envia, devolve
+  o foco. Usado quando a etapa tem `target_window`.
 
 ### VLC e Dispositivos de Saída
-- Instância VLC com `--network-caching=8000 --live-caching=8000`
-- Arquivos locais → `vlc.MediaPlayer`
-- Playlists/streams (`.m3u`, `.m3u8`, `.pls`, `.xspf`, `.asx`) → `vlc.MediaListPlayer`
-- Output device configurado via `audio_output_set("mmdevice")` + `audio_output_device_set()`
-- Aplicado em thread separada após VLC inicializar (aguarda até 5s)
+- Instância VLC com caching alto; arquivos → `MediaPlayer`, playlists/streams →
+  `MediaListPlayer`. Saída via `audio_output_set("mmdevice")` + device id.
+- **v2.1:** `libVLC` é embutido no .exe (`main._setup_bundled_vlc` aponta
+  `PYTHON_VLC_LIB_PATH`/`PYTHON_VLC_MODULE_PATH`). `main_window._apply_output_device`
+  aplica o dispositivo de saída padrão ao player no início e ao salvar config.
 
-### UI (CustomTkinter)
-- Tema escuro fixo (`set_appearance_mode("dark")`)
-- Janela principal com 2 abas: **Configurações** e **Log / Status**
-- Fecha para a bandeja (não encerra o processo)
-- `_STATE_DISPLAY` dict mapeia State → (texto, cor) para o header
-- Painel visual `SequencePanel` no log_tab com 7 boxes animados
+### UI (PySide6/Qt — v2.2)
+- **Janela única mestre-detalhe**, sem modais. `MainWindow` (QMainWindow): top bar
+  (logo, monitor, versão/update) · sidebar de sequências (cards com estado e
+  "fora de agenda") · `QStackedWidget` (placeholder / `SequenceDetail` /
+  `GlobalSettings`) · log no rodapé · `QSystemTrayIcon`.
+- `SequenceDetail`: edita nome/keyword/atraso/agenda/etapas **inline**; a lista de
+  etapas também é o fluxo visual (linha ativa/concluída/erro). Botões **Rodar
+  agora**, **Ensaio** e **Cancelar**, e **▶ testar** por etapa. Editar uma etapa
+  troca a página interna para o `StepEditor` (mesma janela).
+- Tema "console de broadcast" (quase-preto + neon ciano/verde) em `ui/theme.py`.
+- `MainWindow._daily_recheck` reavalia a agenda a cada 10 min.
+
+### Estabilidade (v2.2)
+- `applog.py`: `RotatingFileHandler` em `<data_dir>/logs/autotrigger.log`;
+  `set_ui_sink()` liga o log à `LogView`; instala `sys.excepthook` e
+  `threading.excepthook`. O engine/player logam via `applog.log`.
+- `config.save()` é **atômico** (.tmp + `os.replace`) e mantém `config.json.bak`;
+  `load()` cai no `.bak` se o principal corromper.
+
+### Teste / Ensaio (v2.2)
+- `engine.run_now(id)` dispara manual (sem TXT); `engine.rehearse(id)` roda em
+  **dry-run** (mute/hotkey só logam "[ENSAIO]", áudio/stream limitados a ~8s);
+  `engine.test_step(step)` executa uma etapa isolada. `dry_run`/`preview_cap`
+  fluem por `SequenceRunner` → `StepRunner`.
 
 ---
 
@@ -197,17 +251,57 @@ VLC não usava o dispositivo de saída configurado.
 - `.gitignore` configurado
 - Repositório GitHub criado e código publicado
 
+### Fase 7 — Refino para Produção v2.1.0 (2026-06-03)
+Sete pedidos do operador, todos implementados:
+1. **Delay pós-gatilho:** campo `trigger_delay_seconds` por sequência —
+   ao detectar a keyword, aguarda X (h/m/s) antes da 1ª etapa
+   (`sequence_runner._run`, com contagem regressiva no timer da UI).
+2. **Config não persistia (bug do onefile):** corrigido em
+   `config._resolve_config_file()` — grava ao lado do `.exe`/`%APPDATA%`.
+3. **Streaming sem VLC instalado:** libVLC **embutido** no .exe
+   (`main._setup_bundled_vlc` + `build.bat --add-binary/--add-data`; installer
+   não baixa mais VLC).
+4. **Calendário de execução:** `schedule` por sequência (sempre / dias da semana
+   / datas). Engine só arma a keyword nos dias válidos; recheck a cada 10 min;
+   card mostra "fora de agenda".
+5. **Unmute condicional ao fechar:** ledger `_muted_by_app` +
+   `restore_app_mutes()` — só desmuta o que o app mutou.
+6. **Hotkey sem o app em foco:** `send_hotkey_to_window` (pywin32) foca a janela
+   alvo configurada (`target_window` na etapa hotkey), envia e devolve o foco.
+7. **Tempo em h/m/s + aviso visual:** `timeparse.parse_secs/fmt_secs` aceitam
+   horas; campos de tempo mostram o total interpretado ao vivo (`→ 1h 30m (5400s)`).
+
+Bônus: `_apply_output_device` aplica o dispositivo de saída padrão ao player
+(provável causa do "stream sem áudio"). `build.bat`/`installer` alinhados ao nome
+`AutoTriggerV10.exe`.
+
+### Fase 8 — Overhaul de UX/Visual v2.2.0 (2026-06-03)
+Estudada a pasta `skills` (1.383 skills; relevantes: `frontend-design`,
+`baseline-ui`, `electron-development`, `error-handling-patterns`,
+`async-python-patterns`). Decisões e entregas:
+1. **Migração de UI CustomTkinter → PySide6/Qt** (backend 100% preservado).
+2. **Janela única mestre-detalhe** — fim do "janela atrás de janela" (3 modais
+   empilhados viraram edição inline numa só janela).
+3. **Estética "console de broadcast"** (dark + neon) via QSS em `ui/theme.py`.
+4. **Estabilidade:** `applog.py` (log em arquivo + excepthooks), `config.save()`
+   atômico + `.bak`.
+5. **Ferramentas de teste:** ▶ testar etapa, **Ensaio** (dry-run) e **Rodar agora**.
+6. Tray nativo `QSystemTrayIcon`; `requests`/updater mantidos; `pystray` e
+   `customtkinter` removidos. Empacote com PySide6 (excludes de módulos Qt).
+
 ---
 
 ## 6. Bugs Conhecidos / Pendências
 
 | # | Descrição | Status |
 |---|---|---|
-| 1 | VLC requer instalação separada no sistema (não bundled no .exe) | Aberto |
-| 2 | PyInstaller `.exe` ainda não gerado/testado | Aberto |
-| 3 | `run.bat` / `build.bat` — verificar se estão corretos | Aberto |
+| 1 | VLC requer instalação separada | ✅ Resolvido v2.1 (libVLC embutido) |
+| 2 | Config não persistia no .exe onefile | ✅ Resolvido v2.1 |
+| 3 | `build.bat` desatualizado (nome/`^` quebrados) | ✅ Resolvido v2.1 |
 | 4 | Teste end-to-end completo com hardware real | Pendente |
-| 5 | Stream sem áudio (parcialmente resolvido — aguarda teste real) | Em acompanhamento |
+| 5 | Stream sem áudio | Em acompanhamento (output device agora aplicado) |
+| 6 | Build .exe v2.2 (PySide6) + teste em PC sem VLC | Pendente (rodar `build.bat`) |
+| 7 | Validar tamanho do .exe com PySide6 (ajustar excludes) | Pendente |
 
 ---
 
@@ -235,25 +329,45 @@ VLC não usava o dispositivo de saída configurado.
 
 ---
 
-## 8. Configuração de Referência
+## 8. Configuração de Referência (schema v2)
 
 ```json
 {
-  "txt_file_path": "C:/Users/User/Downloads/MidiaAtual.txt",
-  "keyword_start": "ESPORTE",
-  "keyword_unmute": "FIM_ESPORTE",
-  "input_device_id": "{0.0.1.00000000}.{2a24c533-249e-4725-8743-197ba474ac03}",
-  "input_device_name": "Microfone (RODECaster Pro Stereo)",
-  "output_device_id": "{0.0.0.00000000}.{26e07ddf-8bb3-415e-835b-a63ee090dfba}",
-  "output_device_name": "Alto-falantes (RODECaster Pro Stereo)",
-  "audio_file_1": "E:/Playlist Pajé/VHT TERRA FM/VHT TERRA FM - 97,7 CARIMBO_4 (ACCAPELA).mp3",
-  "audio_file_2": "E:/Playlist Pajé/VHT TERRA FM/VHT TERRA FM - A MELHOR DA REGIAO (FEM).mp3",
-  "stream_url": "https://8033.brasilstream.com.br/stream.m3u",
-  "stream_duration": 30,
-  "hotkey_stop": "f11",
-  "hotkey_play": "f9"
+  "version": 2,
+  "global": {
+    "txt_file_path": "C:/Users/User/Downloads/MidiaAtual.txt",
+    "default_input_device_id": "{0.0.1.00000000}.{2a24c533-...}",
+    "default_input_device_name": "Microfone (RODECaster Pro Stereo)",
+    "default_output_device_id": "{0.0.0.00000000}.{26e07ddf-...}",
+    "default_output_device_name": "Alto-falantes (RODECaster Pro Stereo)"
+  },
+  "sequences": [
+    {
+      "id": "162baf0a",
+      "name": "Jornada Esportiva",
+      "keyword_trigger": "ESPORTE",
+      "enabled": true,
+      "trigger_delay_seconds": 0,
+      "schedule": { "mode": "always", "weekdays": [], "dates": [] },
+      "steps": [
+        { "type": "mute", "device_id": "...", "device_name": "Microfone ..." },
+        { "type": "hotkey", "hotkey": "f11", "target_window": "" },
+        { "type": "play_audio", "file": "...vinheta_entrada.mp3" },
+        { "type": "stream", "url": "https://.../stream.m3u", "duration_seconds": 30 },
+        { "type": "play_audio", "file": "...vinheta_saida.mp3" },
+        { "type": "hotkey", "hotkey": "f9", "target_window": "" },
+        { "type": "wait_keyword", "keyword": "FIM_ESPORTE" },
+        { "type": "hotkey", "hotkey": "f11", "target_window": "" },
+        { "type": "unmute", "device_id": "...", "device_name": "Microfone ..." }
+      ]
+    }
+  ]
 }
 ```
+- `schedule.weekdays`: 0=Seg … 6=Dom. `schedule.dates`: lista `AAAA-MM-DD`.
+- `trigger_delay_seconds`: atraso (segundos) após a keyword antes da 1ª etapa.
+- `target_window` (etapa hotkey): vazio = janela em foco; preenchido = foca a
+  janela cujo título contém esse texto, envia a hotkey e devolve o foco.
 
 ---
 
@@ -264,7 +378,10 @@ VLC não usava o dispositivo de saída configurado.
 python main.py
 
 # Verificar sintaxe de todos os arquivos
-python -c "import py_compile; [py_compile.compile(f, doraise=True) or print('OK', f) for f in ['main.py','config.py','audio_manager.py','player.py','sequence.py','file_monitor.py','hotkey_sender.py','ui/config_tab.py','ui/log_tab.py','ui/main_window.py']]"
+python -c "import py_compile; [py_compile.compile(f, doraise=True) or print('OK', f) for f in ['main.py','config.py','timeparse.py','applog.py','audio_manager.py','player.py','file_monitor.py','hotkey_sender.py','step_runner.py','sequence_runner.py','sequence_engine.py','ui/theme.py','ui/qt_bridge.py','ui/widgets.py','ui/step_editor.py','ui/global_settings.py','ui/sequence_detail.py','ui/main_window.py','ui/update_dialog.py']]"
+
+# Smoke test offscreen da UI Qt (sem abrir janela)
+# QT_QPA_PLATFORM=offscreen python main.py
 
 # Instalar dependências
 pip install -r requirements.txt
@@ -284,4 +401,6 @@ python -c "import audio_manager; print(audio_manager.list_input_devices()); prin
 |---|---|
 | 2026-06-02 | Criação inicial — documentação completa das fases 1-4 |
 | 2026-06-02 | Auto-update + build v1.0.0 publicado no GitHub Releases |
+| 2026-06-03 | Reescrita para arquitetura v2 (motor de sequências) + Fase 7 v2.1.0 |
+| 2026-06-03 | Fase 8 v2.2.0 — migração para PySide6/Qt + UX mestre-detalhe + estabilidade |
 

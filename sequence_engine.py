@@ -11,6 +11,7 @@ from typing import Callable, Dict, Optional
 from step_runner import StepRunner
 from sequence_runner import SequenceRunner, RunnerState
 from file_monitor import FileMonitor
+from timeparse import is_armed_today
 
 
 class SequenceEngine:
@@ -76,8 +77,15 @@ class SequenceEngine:
 
     def _register_all_triggers(self):
         for seq in self._config.get_sequences():
-            if seq.get("enabled", True) and seq.get("keyword_trigger", "").strip():
-                self._register_trigger(seq)
+            if not (seq.get("enabled", True) and seq.get("keyword_trigger", "").strip()):
+                continue
+            if not is_armed_today(seq):
+                self._log_fn(
+                    f"'{seq.get('name', seq['id'])}' fora de agenda hoje — gatilho desativado.",
+                    "warn",
+                )
+                continue
+            self._register_trigger(seq)
 
     def _register_trigger(self, seq: dict):
         kw = seq["keyword_trigger"].strip()
@@ -89,11 +97,15 @@ class SequenceEngine:
     # ── execution ─────────────────────────────────────────────────────────────
 
     def _on_trigger(self, seq_id: str):
+        self.run_sequence(seq_id)
+
+    def run_sequence(self, seq_id: str, dry_run: bool = False, manual: bool = False):
+        """Inicia uma sequência. manual=True ignora o gatilho do TXT (botão Rodar)."""
         runner = self._runners.get(seq_id)
         if runner and runner.state == RunnerState.RUNNING:
             seq = self._config.get_sequence_by_id(seq_id)
             name = seq.get("name", seq_id) if seq else seq_id
-            self._log_fn(f"'{name}' já em execução — gatilho ignorado.", "warn")
+            self._log_fn(f"'{name}' já em execução — ignorado.", "warn")
             return
 
         seq = self._config.get_sequence_by_id(seq_id)
@@ -101,9 +113,13 @@ class SequenceEngine:
             return
 
         name = seq.get("name", seq_id)
-        self._log_fn(f"🚀 Iniciando: '{name}'", "success")
+        if dry_run:
+            self._log_fn(f"🧪 Ensaio: '{name}'", "warn")
+        else:
+            origin = "manual" if manual else "gatilho"
+            self._log_fn(f"🚀 Iniciando ({origin}): '{name}'", "success")
 
-        runner = SequenceRunner(seq, self._step_runner, self._log_fn)
+        runner = SequenceRunner(seq, self._step_runner, self._log_fn, dry_run=dry_run)
         runner.set_keyword_waiter(self._make_keyword_waiter())
         runner.set_callbacks(
             on_state_change=lambda s, i, _id=seq_id: self._on_state(_id, s, i),
@@ -111,6 +127,29 @@ class SequenceEngine:
         )
         self._runners[seq_id] = runner
         runner.start()
+
+    def run_now(self, seq_id: str):
+        """Dispara manualmente a sequência (sem esperar a keyword)."""
+        self.run_sequence(seq_id, dry_run=False, manual=True)
+
+    def rehearse(self, seq_id: str):
+        """Ensaio: percorre a sequência sem mutar/disparar de verdade."""
+        self.run_sequence(seq_id, dry_run=True, manual=True)
+
+    def test_step(self, step: dict):
+        """Executa uma ÚNICA etapa em worker thread (stream/áudio limitados)."""
+        label = step.get("label") or step.get("type", "etapa")
+        self._log_fn(f"🧪 Testando etapa: {label}", "warn")
+
+        def _run():
+            ev = threading.Event()
+            try:
+                self._step_runner.run_step(step, ev, preview_cap=8)
+                self._log_fn(f"✓ Teste da etapa concluído: {label}", "success")
+            except Exception as exc:
+                self._log_fn(f"✗ Erro ao testar etapa: {exc}", "error")
+
+        threading.Thread(target=_run, daemon=True, name="test-step").start()
 
     def _make_keyword_waiter(self) -> Callable:
         """Retorna função que registra keyword temporária e retorna threading.Event."""
@@ -154,3 +193,9 @@ class SequenceEngine:
 
     def get_runner(self, seq_id: str) -> Optional[SequenceRunner]:
         return self._runners.get(seq_id)
+
+    def is_seq_armed_today(self, seq: dict) -> bool:
+        """True se a sequência (habilitada, com keyword) está armada hoje."""
+        if not (seq.get("enabled", True) and seq.get("keyword_trigger", "").strip()):
+            return False
+        return is_armed_today(seq)

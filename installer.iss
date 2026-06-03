@@ -5,7 +5,7 @@
 ; ============================================================
 
 #define AppName    "AutoTrigger V10"
-#define AppVersion "2.0.0"
+#define AppVersion "2.2.0"
 #define AppPublisher "AutoTrigger V10"
 #define AppURL     "https://github.com/RobsonDV/autotrigger-v10"
 #define AppExe     "AutoTriggerV10.exe"
@@ -177,22 +177,12 @@ begin
 end;
 
 // Executado após a cópia dos arquivos
+// A partir da v2.1 o libVLC vem EMBUTIDO no .exe — não é mais necessário
+// instalar o VLC no sistema. As rotinas IsVLCInstalled/DownloadVLC acima ficam
+// como fallback caso, no futuro, se opte por não embutir o VLC.
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssPostInstall then
-  begin
-    if not IsVLCInstalled then
-    begin
-      if MsgBox(
-        'O VLC Media Player é necessário para reprodução de áudio e streams.' + #13#10 +
-        'Ele não foi encontrado neste computador.' + #13#10 + #13#10 +
-        'Deseja baixar e instalar o VLC agora? (recomendado)' + #13#10 +
-        '(~40 MB — será baixado do site oficial videolan.org)',
-        mbConfirmation, MB_YESNO
-      ) = IDYES then
-        DownloadVLC;
-    end;
-  end;
+  // Nada a fazer: o VLC já está embutido no executável.
 end;
 
 // Página de boas-vindas personalizada
