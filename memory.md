@@ -405,4 +405,5 @@ python -c "import audio_manager; print(audio_manager.list_input_devices()); prin
 | 2026-06-03 | Reescrita para arquitetura v2 (motor de sequências) + Fase 7 v2.1.0 |
 | 2026-06-03 | Fase 8 v2.2.0 — migração para PySide6/Qt + UX mestre-detalhe + estabilidade |
 | 2026-06-03 | Release v2.2.0 publicada no GitHub (.exe 113MB) + README.md criado |
+| 2026-06-03 | v2.2.1 — marca do desenvolvedor RobsonDV (publisher, banner, app); release + instalador publicados |
 
