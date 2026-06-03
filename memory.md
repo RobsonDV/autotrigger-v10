@@ -190,6 +190,23 @@ Jornada_Maisnova/
   `engine.test_step(step)` executa uma etapa isolada. `dry_run`/`preview_cap`
   fluem por `SequenceRunner` → `StepRunner`.
 
+### Distribuição & Auto-update (v2.2.4 — IMPORTANTE)
+- **Instalação POR USUÁRIO**: `installer.iss` usa `PrivilegesRequired=lowest` e
+  `DefaultDirName={localappdata}\Programs\AutoTrigger V10` (AppId novo
+  `C5F9D4A3-...`, distinto do AppId admin antigo `B4E8C3F2-...`).
+- **Motivo**: o auto-update substitui o próprio `.exe`. Em `C:\Program Files` o
+  Windows exige admin → `Permission denied` (erro relatado pelo cliente). Pasta do
+  usuário é gravável → update silencioso, sem UAC (padrão Chrome/VS Code/Discord).
+- **updater.py**: baixa o `.exe` novo em `%TEMP%\AutoTriggerV10_update`, troca via
+  batch. Se a pasta do app não for gravável (instalação antiga em Program Files),
+  eleva via UAC (`ShellExecuteW runas`) e reinicia o app de-elevado por
+  `explorer.exe`. `_is_writable()` decide.
+- **Config/logs** em `%APPDATA%\AutoTriggerV10\` (config.json + .bak + logs/).
+- ⚠️ **Updater quebrado em versões ≤ 2.2.2** (gravavam direto em Program Files).
+  Por isso a migração para 2.2.4 exige **1 instalação manual** (desinstalar antigo
+  + instalar `AutoTriggerV10_Setup_v2.2.4.exe`). Depois, tudo automático.
+- Mantém entrada em "Adicionar/remover programas" (uninstall por usuário, HKCU).
+
 ---
 
 ## 5. Fases de Desenvolvimento
@@ -300,9 +317,11 @@ Estudada a pasta `skills` (1.383 skills; relevantes: `frontend-design`,
 | 3 | `build.bat` desatualizado (nome/`^` quebrados) | ✅ Resolvido v2.1 |
 | 4 | Teste end-to-end completo com hardware real | Pendente |
 | 5 | Stream sem áudio | Em acompanhamento (output device agora aplicado) |
-| 6 | Build .exe v2.2 (PySide6) + release publicada | ✅ v2.2.0 publicada (113MB) |
+| 6 | Build .exe v2.2 (PySide6) + release publicada | ✅ publicada |
 | 7 | Tamanho do .exe (113MB) — enxugar excludes Qt/UPX | Aberto (otimização) |
 | 8 | Teste em PC sem VLC instalado | Pendente |
+| 9 | Auto-update falhava em Program Files (Permission denied) | ✅ Resolvido v2.2.4 (instalação por usuário) |
+| 10 | Hotkey p/ software de rádio rodando COMO ADMIN | Em aberto (app por-usuário não envia a processo elevado) |
 
 ---
 

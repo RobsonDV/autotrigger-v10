@@ -55,6 +55,34 @@ Janela única (mestre-detalhe), sem pop-ups:
 
 ---
 
+## ⬇️ Instalação & Atualização
+
+**Modelo de instalação (v2.2.4+): por usuário, sem admin.**
+- O instalador (`AutoTriggerV10_Setup_vX.Y.Z.exe`) instala em
+  **`%LocalAppData%\Programs\AutoTrigger V10`** com `PrivilegesRequired=lowest`
+  (não pede administrador).
+- Continua aparecendo em **"Adicionar ou remover programas"** (entrada por usuário).
+- **Por que por usuário?** Porque o auto-update precisa substituir o próprio `.exe`.
+  Em `C:\Program Files` o Windows exige admin para isso (causa o erro
+  `Permission denied`). Em pasta do usuário a troca é livre — é o mesmo modelo de
+  Chrome, VS Code (User Installer), Discord e Zoom.
+
+**Onde ficam os dados:**
+- Configuração/sequências: **`%APPDATA%\AutoTriggerV10\config.json`** (com backup
+  `.bak`). Preservados em qualquer atualização/reinstalação.
+- Logs: **`%APPDATA%\AutoTriggerV10\logs\autotrigger.log`**.
+
+**Auto-update:** ao abrir, o app compara `version.py` com a última *release* do
+GitHub. Havendo versão nova, mostra **🔔** e instala sozinho (baixa em pasta
+temporária, troca o `.exe` e reinicia). Sem UAC quando instalado por usuário.
+
+> ⚠️ **Migração de uma instalação antiga em Program Files (≤ 2.2.3):** versões
+> antigas tinham updater que não conseguia gravar em Program Files. Faça **uma vez**:
+> 1) feche o app (bandeja → Sair); 2) desinstale o "AutoTrigger V10" antigo;
+> 3) instale o `AutoTriggerV10_Setup_v2.2.4.exe`. A partir daí, tudo é automático.
+
+---
+
 ## 🧩 Arquitetura (resumo)
 
 ```
@@ -107,10 +135,24 @@ build.bat
 
 - Embute o libVLC a partir de `C:\Program Files\VideoLAN\VLC` (ou defina `VLC_DIR`).
 - Gera `dist\AutoTriggerV10.exe` (asset usado pelo auto-update).
-- O instalador opcional é gerado por `installer.iss` (Inno Setup).
+
+O **instalador** é gerado por `installer.iss` (Inno Setup — `ISCC.exe installer.iss`),
+em modo **por usuário** (`PrivilegesRequired=lowest`, `DefaultDirName={localappdata}\Programs`).
+Resulta em `dist\AutoTriggerV10_Setup_vX.Y.Z.exe`.
+
+**Publicar release** (o que o auto-update consome):
+
+```bat
+gh release create vX.Y.Z ^
+  "dist/AutoTriggerV10.exe#AutoTriggerV10.exe" ^
+  "dist/AutoTriggerV10_Setup_vX.Y.Z.exe#AutoTriggerV10_Setup_vX.Y.Z.exe" ^
+  --title "vX.Y.Z" --notes-file RELEASE_NOTES.md
+```
 
 O auto-update compara a tag da última release do GitHub com `version.py`
-(`__version__`) e baixa o `AutoTriggerV10.exe` da release mais recente.
+(`__version__`) e baixa o asset **`AutoTriggerV10.exe`** (nome exato exigido por
+`GITHUB_ASSET_NAME`). A versão (`version.py`, `version_info.txt`, `installer.iss`)
+deve ser incrementada a cada release.
 
 ---
 
