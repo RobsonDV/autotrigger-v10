@@ -32,7 +32,7 @@ from version import __version__, GITHUB_REPO, GITHUB_ASSET_NAME
 
 _API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 _HEADERS = {
-    "User-Agent": f"MaisNovaSportTrigger/{__version__}",
+    "User-Agent": f"AutoTriggerV10/{__version__} (RobsonDV)",
     "Accept": "application/vnd.github.v3+json",
 }
 

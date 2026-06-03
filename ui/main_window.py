@@ -158,6 +158,9 @@ class MainWindow(QMainWindow):
         logo = QLabel("⚡  AutoTrigger V10")
         logo.setObjectName("h1")
         lay.addWidget(logo)
+        credit = QLabel("by RobsonDV")
+        credit.setObjectName("dim")
+        lay.addWidget(credit, alignment=Qt.AlignBottom)
         lay.addStretch(1)
 
         self._monitor_dot = StatusDot("error")

@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-echo Iniciando MaisNova Sport Trigger...
+echo Iniciando AutoTrigger V10  (by RobsonDV)...
 python main.py
 if %ERRORLEVEL% NEQ 0 (
     echo.

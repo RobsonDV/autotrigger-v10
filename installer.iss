@@ -1,12 +1,12 @@
 ; ============================================================
-;  MaisNova Sport Trigger — Inno Setup Script
+;  AutoTrigger V10 — Inno Setup Script  (by RobsonDV)
 ;  Para compilar: build_installer.bat
 ;  Ou manualmente: ISCC.exe installer.iss
 ; ============================================================
 
 #define AppName    "AutoTrigger V10"
-#define AppVersion "2.2.0"
-#define AppPublisher "AutoTrigger V10"
+#define AppVersion "2.2.1"
+#define AppPublisher "RobsonDV"
 #define AppURL     "https://github.com/RobsonDV/autotrigger-v10"
 #define AppExe     "AutoTriggerV10.exe"
 
@@ -86,7 +86,7 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; \
 [Registry]
 ; Inicialização com o Windows (opcional)
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
-  ValueType: string; ValueName: "MaisNovaSportTrigger"; \
+  ValueType: string; ValueName: "AutoTriggerV10"; \
   ValueData: """{app}\{#AppExe}"""; \
   Flags: uninsdeletevalue; Tasks: startuprun
 
@@ -170,7 +170,7 @@ begin
       '1. Acesse: https://www.videolan.org/vlc/download-windows.html' + #13#10 +
       '2. Baixe a versão para Windows (64-bit)' + #13#10 +
       '3. Execute o instalador' + #13#10 + #13#10 +
-      'O Sport Trigger não funcionará sem o VLC instalado.',
+      'O AutoTrigger V10 não funcionará sem o VLC instalado.',
       mbError, MB_OK
     );
   end;
