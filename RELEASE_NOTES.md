@@ -1,16 +1,21 @@
-## AutoTrigger V10 — v2.2.2
+## AutoTrigger V10 — v2.2.3
 
 Desenvolvido por **RobsonDV**.
 
-### Gerenciamento de sequências (correções)
-- **Excluir sequência** (botão 🗑 no topo, com confirmação).
-- **Duplicar sequência** (botão ⧉) — crie um novo evento usando outro como base.
-- Botão **✕ de excluir etapa** agora em vermelho e com dica (tooltip), bem mais fácil de achar.
-- Tooltips em todos os botões de etapa (testar, editar, mover, excluir).
+### Correção do auto-update (importante)
+- Corrigido o erro **"Permission denied"** ao atualizar com o app instalado em
+  *Program Files*: a nova versão é baixada numa pasta temporária e a troca do
+  executável é feita com **elevação (UAC)**, reiniciando o app sem privilégios.
+- Configurações agora ficam sempre em **%APPDATA%\AutoTriggerV10** (sem conflito
+  de permissão).
+
+> ⚠️ Como as versões anteriores (≤ 2.2.2) têm o updater antigo, **esta versão
+> precisa ser instalada manualmente uma vez** (rode o instalador
+> AutoTriggerV10_Setup_v2.2.3.exe). A partir dela, as próximas atualizações são
+> automáticas.
 
 ### Inclui tudo das 2.2.x
-- Interface PySide6/Qt em janela única, seletor de janela alvo, captura de hotkey.
-- Ferramentas de teste: testar etapa, Ensaio, Rodar agora.
-- Atraso após gatilho, calendário, unmute seguro, VLC embutido, auto-update.
-
-> Atualização automática: o app baixa e instala esta versão ao abrir.
+- Excluir/duplicar sequência, ✕ de etapa destacado, tooltips.
+- Interface PySide6/Qt, seletor de janela alvo, captura de hotkey.
+- Ferramentas de teste (testar etapa, Ensaio, Rodar agora).
+- Atraso após gatilho, calendário, unmute seguro, VLC embutido.

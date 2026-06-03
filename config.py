@@ -27,25 +27,27 @@ def _resolve_config_file() -> str:
     - Dev: ao lado deste arquivo.
     """
     if getattr(sys, "frozen", False):
+        # Sempre em %APPDATA% (gravável sem admin, sem divergência entre execuções
+        # normais e elevadas). Semeia a partir do config instalado/bundled na 1ª vez.
         exe_dir = os.path.dirname(sys.executable)
-        candidate = os.path.join(exe_dir, "config.json")
-        if _is_dir_writable(exe_dir):
-            return candidate
         appdata = os.environ.get("APPDATA") or exe_dir
-        fallback_dir = os.path.join(appdata, "AutoTriggerV10")
+        data_dir = os.path.join(appdata, "AutoTriggerV10")
         try:
-            os.makedirs(fallback_dir, exist_ok=True)
+            os.makedirs(data_dir, exist_ok=True)
         except OSError:
-            return candidate
-        fallback = os.path.join(fallback_dir, "config.json")
-        # Migra config existente ao lado do exe (instalado) na 1ª vez
-        if not os.path.exists(fallback) and os.path.exists(candidate):
-            try:
-                import shutil
-                shutil.copy2(candidate, fallback)
-            except Exception:
-                pass
-        return fallback
+            return os.path.join(exe_dir, "config.json")
+        target = os.path.join(data_dir, "config.json")
+        if not os.path.exists(target):
+            for src in (os.path.join(exe_dir, "config.json"),
+                        os.path.join(getattr(sys, "_MEIPASS", exe_dir), "config.json")):
+                if os.path.exists(src):
+                    try:
+                        import shutil
+                        shutil.copy2(src, target)
+                    except Exception:
+                        pass
+                    break
+        return target
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_dir, "config.json")

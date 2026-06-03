@@ -407,4 +407,5 @@ python -c "import audio_manager; print(audio_manager.list_input_devices()); prin
 | 2026-06-03 | Release v2.2.0 publicada no GitHub (.exe 113MB) + README.md criado |
 | 2026-06-03 | v2.2.1 — marca do desenvolvedor RobsonDV (publisher, banner, app); release + instalador publicados |
 | 2026-06-03 | v2.2.2 — CRUD de sequências na UI nova: excluir e duplicar sequência + ✕ de etapa destacado |
+| 2026-06-03 | v2.2.3 — fix auto-update em Program Files (download no temp + troca elevada UAC); config sempre em %APPDATA% |
 

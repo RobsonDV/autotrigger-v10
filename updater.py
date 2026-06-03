@@ -37,6 +37,18 @@ _HEADERS = {
 }
 
 
+def _is_writable(path: str) -> bool:
+    """Testa escrita real no diretório (mais confiável que os.access em Windows)."""
+    probe = os.path.join(path, ".upd_write_test.tmp")
+    try:
+        with open(probe, "w") as f:
+            f.write("")
+        os.remove(probe)
+        return True
+    except Exception:
+        return False
+
+
 def _parse_version(tag: str) -> tuple:
     """Converte 'v1.2.3' ou '1.2.3' em (1, 2, 3) para comparação."""
     tag = tag.lstrip("v").strip()
@@ -120,16 +132,23 @@ class Updater:
 
         self._log(f"Baixando atualização v{info.version}...", "info")
 
-        # Pasta do executável atual (funciona tanto em dev quanto em .exe)
+        # Caminho do executável atual
         if getattr(sys, "frozen", False):
-            app_dir = os.path.dirname(sys.executable)
             exe_path = sys.executable
         else:
-            app_dir = os.path.dirname(os.path.abspath(__file__))
-            exe_path = os.path.join(app_dir, GITHUB_ASSET_NAME)
+            exe_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), GITHUB_ASSET_NAME)
+        app_dir = os.path.dirname(exe_path)
 
-        new_exe = os.path.join(app_dir, f"_{GITHUB_ASSET_NAME}.new")
-        bat_path = os.path.join(app_dir, "_update.bat")
+        # Baixa SEMPRE para uma pasta temporária gravável (evita Errno 13 em
+        # Program Files quando o app roda sem admin).
+        tmp_dir = os.path.join(tempfile.gettempdir(), "AutoTriggerV10_update")
+        try:
+            os.makedirs(tmp_dir, exist_ok=True)
+        except OSError:
+            tmp_dir = tempfile.gettempdir()
+        new_exe = os.path.join(tmp_dir, f"{GITHUB_ASSET_NAME}.new")
+        bat_path = os.path.join(tmp_dir, "_update.bat")
         pid = os.getpid()
 
         # ── Download ──────────────────────────────────────────────────────
@@ -138,53 +157,72 @@ class Updater:
             resp.raise_for_status()
             total = int(resp.headers.get("content-length", 0))
             downloaded = 0
-
             with open(new_exe, "wb") as f:
                 for chunk in resp.iter_content(chunk_size=65536):
                     f.write(chunk)
                     downloaded += len(chunk)
                     if progress_callback and total:
                         progress_callback(int(downloaded * 100 / total))
-
         except Exception as exc:
             self._log(f"Erro no download: {exc}", "error")
             if os.path.exists(new_exe):
-                os.remove(new_exe)
+                try:
+                    os.remove(new_exe)
+                except OSError:
+                    pass
             return
 
         self._log("Download concluído. Preparando instalação...", "info")
 
-        # ── Script batch que substitui o .exe enquanto o app está fechado ──
+        # Precisa elevar? (Program Files não é gravável sem admin)
+        needs_elevation = not _is_writable(app_dir)
+
+        # Reinício: se elevado, usa o explorer para voltar ao nível normal de
+        # privilégio; senão, start direto.
+        restart_cmd = (f'start "" explorer.exe "{exe_path}"' if needs_elevation
+                       else f'start "" "{exe_path}"')
+
         bat_content = f"""@echo off
-echo Aguardando o aplicativo fechar...
 :wait
 tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL
 if not errorlevel 1 (
     timeout /t 1 /nobreak >NUL
     goto wait
 )
-echo Instalando atualização...
 move /Y "{new_exe}" "{exe_path}"
-if %ERRORLEVEL% NEQ 0 (
+if errorlevel 1 (
     echo ERRO: nao foi possivel substituir o executavel.
     pause
     exit /b 1
 )
-echo Iniciando versão atualizada...
-start "" "{exe_path}"
+{restart_cmd}
 del "%~f0"
 """
-        with open(bat_path, "w", encoding="ascii") as f:
+        with open(bat_path, "w", encoding="ascii", errors="replace") as f:
             f.write(bat_content)
 
         self._log(f"Instalando v{info.version}... O aplicativo será reiniciado.", "success")
 
-        # Lança o batch em janela oculta e encerra este processo
-        subprocess.Popen(
-            ["cmd.exe", "/c", bat_path],
-            creationflags=subprocess.CREATE_NO_WINDOW,
-            close_fds=True,
-        )
+        try:
+            if needs_elevation:
+                # Eleva via UAC para poder gravar em Program Files
+                import ctypes
+                rc = ctypes.windll.shell32.ShellExecuteW(
+                    None, "runas", "cmd.exe", f'/c "{bat_path}"', None, 0
+                )
+                if rc <= 32:
+                    self._log("Atualização cancelada ou permissão negada (UAC).", "warn")
+                    return
+            else:
+                subprocess.Popen(
+                    ["cmd.exe", "/c", bat_path],
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    close_fds=True,
+                )
+        except Exception as exc:
+            self._log(f"Erro ao iniciar a instalação: {exc}", "error")
+            return
+
         sys.exit(0)
 
     # ── private ─────────────────────────────────────────────────────────────
