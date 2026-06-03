@@ -5,14 +5,15 @@
 ; ============================================================
 
 #define AppName    "AutoTrigger V10"
-#define AppVersion "2.2.3"
+#define AppVersion "2.2.4"
 #define AppPublisher "RobsonDV"
 #define AppURL     "https://github.com/RobsonDV/autotrigger-v10"
 #define AppExe     "AutoTriggerV10.exe"
 
 [Setup]
-; GUID unico -- NAO ALTERAR entre versoes (garante upgrade limpo)
-AppId={{B4E8C3F2-AD5F-4B9G-C7F1-3E2G4D6B8C0F}
+; GUID da instalacao POR USUARIO (v2.2.4+). Diferente do AppId antigo (admin),
+; para nao colidir com a versao anterior instalada em Program Files.
+AppId={{C5F9D4A3-BE6F-4C8A-9D2B-4F3E5A7C9D11}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} v{#AppVersion}
@@ -21,10 +22,11 @@ AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}/issues
 AppUpdatesURL={#AppURL}/releases
 
-; Diretorio padrao de instalacao
-DefaultDirName={autopf}\AutoTrigger V10
+; Instalacao POR USUARIO (sem admin) -> pasta gravavel -> auto-update sem UAC
+DefaultDirName={localappdata}\Programs\AutoTrigger V10
 DefaultGroupName=AutoTrigger V10
 AllowNoIcons=yes
+UsePreviousAppDir=yes
 
 ; Saída
 OutputDir=dist
@@ -42,9 +44,8 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 LZMAUseSeparateProcess=yes
 
-; Requer admin (necessário para atalhos globais de teclado)
-PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=dialog
+; SEM admin: instala por usuario, em area gravavel (essencial p/ auto-update)
+PrivilegesRequired=lowest
 
 ; Ícone de desinstalação
 UninstallDisplayIcon={app}\{#AppExe}

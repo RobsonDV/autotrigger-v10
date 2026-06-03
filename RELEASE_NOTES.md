@@ -1,18 +1,19 @@
-## AutoTrigger V10 — v2.2.3
+## AutoTrigger V10 — v2.2.4
 
 Desenvolvido por **RobsonDV**.
 
-### Correção do auto-update (importante)
-- Corrigido o erro **"Permission denied"** ao atualizar com o app instalado em
-  *Program Files*: a nova versão é baixada numa pasta temporária e a troca do
-  executável é feita com **elevação (UAC)**, reiniciando o app sem privilégios.
-- Configurações agora ficam sempre em **%APPDATA%\AutoTriggerV10** (sem conflito
-  de permissão).
+### Instalação por usuário → fim dos erros de atualização
+- O app agora instala em **%LocalAppData%** (por usuário, **sem precisar de admin**).
+- Como a pasta é gravável, o **auto-update funciona sozinho, sem UAC e sem erro de
+  permissão**.
 
-> ⚠️ Como as versões anteriores (≤ 2.2.2) têm o updater antigo, **esta versão
-> precisa ser instalada manualmente uma vez** (rode o instalador
-> AutoTriggerV10_Setup_v2.2.3.exe). A partir dela, as próximas atualizações são
-> automáticas.
+> ⚠️ **Troca única (importante):** esta versão usa um novo modo de instalação.
+> No PC do cliente:
+> 1. **Desinstale** a versão antiga "AutoTrigger V10" (a que estava em Arquivos de Programas).
+> 2. Instale o **AutoTriggerV10_Setup_v2.2.4.exe** (não pede admin).
+>
+> A partir daqui, **todas as próximas atualizações são automáticas e silenciosas**.
+> Suas sequências/configurações são preservadas (ficam em %APPDATA%).
 
 ### Inclui tudo das 2.2.x
 - Excluir/duplicar sequência, ✕ de etapa destacado, tooltips.
