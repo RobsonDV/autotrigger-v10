@@ -4,15 +4,15 @@
 ;  Ou manualmente: ISCC.exe installer.iss
 ; ============================================================
 
-#define AppName    "MaisNova Sport Trigger"
-#define AppVersion "1.0.0"
-#define AppPublisher "MaisNova / Terra FM"
-#define AppURL     "https://github.com/RobsonDV/maisnova-sport-trigger"
-#define AppExe     "SportTrigger.exe"
+#define AppName    "AutoTrigger V10"
+#define AppVersion "2.0.0"
+#define AppPublisher "AutoTrigger V10"
+#define AppURL     "https://github.com/RobsonDV/autotrigger-v10"
+#define AppExe     "AutoTriggerV10.exe"
 
 [Setup]
-; GUID único — NÃO ALTERAR entre versões (garante upgrade limpo)
-AppId={{A3F7B2D1-9C4E-4A8F-B6E0-2D1F3C5A7B9E}
+; GUID unico -- NAO ALTERAR entre versoes (garante upgrade limpo)
+AppId={{B4E8C3F2-AD5F-4B9G-C7F1-3E2G4D6B8C0F}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} v{#AppVersion}
@@ -21,14 +21,14 @@ AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}/issues
 AppUpdatesURL={#AppURL}/releases
 
-; Diretório padrão de instalação
-DefaultDirName={autopf}\MaisNova Sport Trigger
-DefaultGroupName=MaisNova Sport Trigger
+; Diretorio padrao de instalacao
+DefaultDirName={autopf}\AutoTrigger V10
+DefaultGroupName=AutoTrigger V10
 AllowNoIcons=yes
 
 ; Saída
 OutputDir=dist
-OutputBaseFilename=MaisNova_SportTrigger_Setup_v{#AppVersion}
+OutputBaseFilename=AutoTriggerV10_Setup_v{#AppVersion}
 
 ; Visual
 SetupIconFile=assets\icon.ico
@@ -49,6 +49,8 @@ PrivilegesRequiredOverridesAllowed=dialog
 ; Ícone de desinstalação
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
+
+; Comentario: Automacao de disparos por gatilho em arquivo TXT
 
 ; Versão mínima do Windows
 MinVersion=10.0

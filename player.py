@@ -77,6 +77,18 @@ class AudioPlayer:
         try:
             self._player = self._instance.media_player_new()
 
+            # Configura dispositivo de saída ANTES de iniciar (síncrono)
+            # Isso evita que o VLC abra o device padrão e depois mude,
+            # o que causaria áudio duplicado na transição.
+            if self._output_device_id:
+                try:
+                    self._player.audio_output_set("mmdevice")
+                    self._player.audio_output_device_set(
+                        "mmdevice", self._output_device_id
+                    )
+                except Exception as exc:
+                    self._log(f"Aviso ao configurar saída de áudio: {exc}", "warn")
+
             if is_playlist:
                 self._log(f"Modo playlist (M3U/PLS): {source}", "info")
                 media_list = self._instance.media_list_new([source])
@@ -88,14 +100,6 @@ class AudioPlayer:
                 media = self._instance.media_new(source)
                 self._player.set_media(media)
                 self._player.play()
-
-            # Configura dispositivo de saída após iniciar (em thread separada)
-            if self._output_device_id:
-                threading.Thread(
-                    target=self._apply_output_device,
-                    daemon=True,
-                    name="player-set-device",
-                ).start()
 
             self._stop_monitor.clear()
             self._monitor_thread = threading.Thread(
@@ -112,26 +116,6 @@ class AudioPlayer:
             return False
 
     # ── internal ──────────────────────────────────────────────────────────────
-
-    def _apply_output_device(self):
-        """
-        Tenta configurar o dispositivo de saída no VLC após um breve delay.
-        VLC precisa inicializar o áudio antes de aceitar a configuração.
-        """
-        for _ in range(8):
-            time.sleep(0.5)
-            if self._player is None:
-                return
-            try:
-                state = self._player.get_state()
-                if state not in (vlc.State.NothingSpecial, vlc.State.Opening):
-                    self._player.audio_output_set("mmdevice")
-                    self._player.audio_output_device_set("mmdevice", self._output_device_id)
-                    self._log("Dispositivo de saída configurado no VLC.", "info")
-                    return
-            except Exception as exc:
-                self._log(f"Aviso ao configurar saída de áudio: {exc}", "warn")
-                return
 
     def _monitor_playback(self, duration_seconds: int, generation: int):
         """
@@ -208,12 +192,14 @@ class AudioPlayer:
         if self._list_player is not None:
             try:
                 self._list_player.stop()
+                self._list_player.release()
             except Exception:
                 pass
             self._list_player = None
         if self._player is not None:
             try:
                 self._player.stop()
+                self._player.release()
             except Exception:
                 pass
             self._player = None

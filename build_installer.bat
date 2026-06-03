@@ -3,7 +3,7 @@ cd /d "%~dp0"
 setlocal enabledelayedexpansion
 
 echo ============================================================
-echo  MaisNova Sport Trigger — Build Instalador Completo
+echo  AutoTrigger V10 -- Build Instalador Completo
 echo ============================================================
 echo.
 
@@ -27,7 +27,7 @@ if %ERRORLEVEL% NEQ 0 (echo ERRO ao instalar dependencias. & pause & exit /b 1)
 echo.
 
 REM ── Passo 3: Compilar .exe com PyInstaller ───────────────────────────────
-echo [3/5] Compilando SportTrigger.exe com PyInstaller...
+echo [3/5] Compilando AutoTriggerV10.exe com PyInstaller...
 echo (Isso pode levar alguns minutos)
 echo.
 
@@ -48,7 +48,7 @@ if not exist "%PYINSTALLER%" (
 "%PYINSTALLER%" ^
   --onefile ^
   --windowed ^
-  --name "SportTrigger" ^
+  --name "AutoTriggerV10" ^
   --icon "assets\icon.ico" ^
   --version-file "version_info.txt" ^
   --add-data "config.json;." ^
@@ -87,7 +87,7 @@ if "%ISCC%"=="" (
     echo  1. Baixe o Inno Setup 6 em: https://jrsoftware.org/isdl.php
     echo  2. Instale e execute este script novamente
     echo.
-    echo O SportTrigger.exe foi gerado em: dist\SportTrigger.exe
+    echo O AutoTriggerV10.exe foi gerado em: dist\AutoTriggerV10.exe
     echo Voce pode distribuir esse .exe diretamente (requer VLC instalado).
     pause
     exit /b 0
@@ -127,8 +127,8 @@ echo.
 echo ============================================================
 echo  BUILD CONCLUIDO COM SUCESSO!
 echo.
-echo  Instalador: dist\MaisNova_SportTrigger_Setup_v%APP_VERSION%.exe
-echo  Executavel: dist\SportTrigger.exe
+echo  Instalador: dist\AutoTriggerV10_Setup_v%APP_VERSION%.exe
+echo  Executavel: dist\AutoTriggerV10.exe
 echo ============================================================
 echo.
 echo Para publicar no GitHub Releases, execute build.bat
