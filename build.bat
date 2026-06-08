@@ -46,7 +46,7 @@ echo.
 echo [3/4] Compilando AutoTriggerV10.exe v%APP_VERSION%...
 echo.
 
-pyinstaller ^
+python -m PyInstaller ^
   --onefile ^
   --windowed ^
   --name "AutoTriggerV10" ^
