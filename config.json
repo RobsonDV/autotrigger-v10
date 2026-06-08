@@ -5,7 +5,23 @@
     "default_input_device_id": "{0.0.1.00000000}.{2a24c533-249e-4725-8743-197ba474ac03}",
     "default_input_device_name": "Microfone (RODECaster Pro Stereo)",
     "default_output_device_id": "{0.0.0.00000000}.{26e07ddf-8bb3-415e-835b-a63ee090dfba}",
-    "default_output_device_name": "Alto-falantes (RODECaster Pro Stereo)"
+    "default_output_device_name": "Alto-falantes (RODECaster Pro Stereo)",
+    "email": {
+      "enabled": false,
+      "smtp_host": "",
+      "smtp_port": 587,
+      "use_tls": true,
+      "username": "",
+      "password": "",
+      "from_addr": "",
+      "to_addrs": "",
+      "events": {
+        "start": true,
+        "done": true,
+        "error": true,
+        "stream_reconnect": true
+      }
+    }
   },
   "sequences": [
     {

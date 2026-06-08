@@ -2,7 +2,7 @@
 
 > **Arquivo vivo.** Atualizado a cada sessão de desenvolvimento.  
 > Contém todo o histórico de decisões, tecnologias, bugs resolvidos e planos futuros.  
-> Última atualização: 2026-06-03 — **v2.1.0**
+> Última atualização: 2026-06-07 — **v2.3.0**
 
 > ⚠️ **Nota histórica:** o projeto nasceu como *MaisNova Sport Trigger* (v1.0, fluxo
 > fixo da Jornada Esportiva). Na **v2.0** virou **AutoTrigger V10**, um motor de
@@ -306,6 +306,28 @@ Estudada a pasta `skills` (1.383 skills; relevantes: `frontend-design`,
 6. Tray nativo `QSystemTrayIcon`; `requests`/updater mantidos; `pystray` e
    `customtkinter` removidos. Empacote com PySide6 (excludes de módulos Qt).
 
+### Fase 9 — Watchdog de stream + Alertas por email v2.3.0 (2026-06-07)
+Dois pedidos do operador (o stream "parava" e exigia play manual; faltava aviso):
+1. **Watchdog de stream com auto-reconexão (`player.py`):** antes, no modo stream
+   o monitor **só contava o tempo via `sleep` e ignorava o estado do VLC** — se a
+   conexão caía no meio, o app seguia "achando" que tocava (silêncio no ar). Agora
+   `_monitor_stream` checa `get_state()` a cada tick; se cai (`Error`/`Ended`/
+   `Stopped`) antes do tempo acabar, **refaz o play sozinho** (helper extraído
+   `_start_media`) com *backoff* (1s→5s), sem perder o tempo restante (duração é
+   por tempo de parede). Novo callback `set_on_stream_event(kind, detail)`
+   (`dropped`/`reconnecting`/`recovered`) alimenta o alerta. **VLC mantido** (mais
+   robusto p/ M3U/HLS + device de saída por ID); o problema não era o VLC.
+2. **Alertas por email (SMTP genérico):** novo módulo **`emailer.py`** (`smtplib`,
+   sem dependência nova) — `send_email`/`notify_async` (envio em thread daemon, não
+   bloqueia engine/UI, falha não interrompe sequência). Config: bloco `email` em
+   `DEFAULT_GLOBAL` (host/porta/TLS/usuário/senha/remetente/destinos + flags de
+   eventos), com merge de defaults na carga (`_ensure_global_defaults`) p/ configs
+   antigas. UI: seção "ALERTAS POR EMAIL" em `ui/global_settings.py` + botão
+   **"Enviar email de teste"**. Disparo central em `sequence_engine._on_state`
+   (início/fim/erro) + handler `_on_stream_event` (queda/reconexão); **ensaio não
+   envia** (via `SequenceRunner.is_dry_run`). SMTP_SSL p/ porta 465, senão
+   STARTTLS quando `use_tls`.
+
 ---
 
 ## 6. Bugs Conhecidos / Pendências
@@ -317,6 +339,7 @@ Estudada a pasta `skills` (1.383 skills; relevantes: `frontend-design`,
 | 3 | `build.bat` desatualizado (nome/`^` quebrados) | ✅ Resolvido v2.1 |
 | 4 | Teste end-to-end completo com hardware real | Pendente |
 | 5 | Stream sem áudio | Em acompanhamento (output device agora aplicado) |
+| 11 | Stream caía e exigia play manual | ✅ Resolvido v2.3 (watchdog + auto-reconexão em player.py) |
 | 6 | Build .exe v2.2 (PySide6) + release publicada | ✅ publicada |
 | 7 | Tamanho do .exe (113MB) — enxugar excludes Qt/UPX | Aberto (otimização) |
 | 8 | Teste em PC sem VLC instalado | Pendente |
@@ -343,7 +366,7 @@ Estudada a pasta `skills` (1.383 skills; relevantes: `frontend-design`,
 - **Integração com OBS/vMix:** Enviar cenas por WebSocket quando a jornada iniciar/encerrar
 - **Suporte a múltiplas rádios esportivas:** Selecionar qual stream tocar por palavra-chave diferente
 - **Modo "ensaio":** Simula toda a sequência sem realmente mutar/enviar hotkeys
-- **Watchdog de saúde do stream:** Reiniciar automaticamente se o stream cair durante a transmissão
+- ~~**Watchdog de saúde do stream:** Reiniciar automaticamente se o stream cair durante a transmissão~~ ✅ feito v2.3 (player.py)
 - **Auto-update:** Verificar GitHub por novas versões ao iniciar
 - **Versão web (Electron/Tauri):** Tornar multiplataforma para Mac/Linux
 
@@ -398,7 +421,7 @@ Estudada a pasta `skills` (1.383 skills; relevantes: `frontend-design`,
 python main.py
 
 # Verificar sintaxe de todos os arquivos
-python -c "import py_compile; [py_compile.compile(f, doraise=True) or print('OK', f) for f in ['main.py','config.py','timeparse.py','applog.py','audio_manager.py','player.py','file_monitor.py','hotkey_sender.py','step_runner.py','sequence_runner.py','sequence_engine.py','ui/theme.py','ui/qt_bridge.py','ui/widgets.py','ui/step_editor.py','ui/global_settings.py','ui/sequence_detail.py','ui/main_window.py','ui/update_dialog.py']]"
+python -c "import py_compile; [py_compile.compile(f, doraise=True) or print('OK', f) for f in ['main.py','config.py','timeparse.py','applog.py','audio_manager.py','player.py','file_monitor.py','hotkey_sender.py','step_runner.py','sequence_runner.py','sequence_engine.py','emailer.py','ui/theme.py','ui/qt_bridge.py','ui/widgets.py','ui/step_editor.py','ui/global_settings.py','ui/sequence_detail.py','ui/main_window.py','ui/update_dialog.py']]"
 
 # Smoke test offscreen da UI Qt (sem abrir janela)
 # QT_QPA_PLATFORM=offscreen python main.py
@@ -428,4 +451,5 @@ python -c "import audio_manager; print(audio_manager.list_input_devices()); prin
 | 2026-06-03 | v2.2.2 — CRUD de sequências na UI nova: excluir e duplicar sequência + ✕ de etapa destacado |
 | 2026-06-03 | v2.2.3 — fix auto-update em Program Files (download no temp + troca elevada UAC); config sempre em %APPDATA% |
 | 2026-06-03 | v2.2.4 — instalador POR USUÁRIO (%LocalAppData%, PrivilegesRequired=lowest, novo AppId) → auto-update sem UAC |
+| 2026-06-07 | v2.3.0 — Fase 9: watchdog de stream c/ auto-reconexão (player.py) + alertas por email (emailer.py, SMTP genérico, seção na Config) |
 

@@ -67,12 +67,30 @@ def _is_dir_writable(path: str) -> bool:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = _resolve_config_file()
 
+DEFAULT_EMAIL = {
+    "enabled": False,
+    "smtp_host": "",
+    "smtp_port": 587,
+    "use_tls": True,
+    "username": "",
+    "password": "",
+    "from_addr": "",
+    "to_addrs": "",
+    "events": {
+        "start": True,
+        "done": True,
+        "error": True,
+        "stream_reconnect": True,
+    },
+}
+
 DEFAULT_GLOBAL = {
     "txt_file_path": "",
     "default_input_device_id": "",
     "default_input_device_name": "",
     "default_output_device_id": "",
     "default_output_device_name": "",
+    "email": dict(DEFAULT_EMAIL),
 }
 
 
@@ -151,6 +169,7 @@ class Config:
         if loaded.get("version", 1) < 2:
             loaded = _migrate_v1(loaded)
             self._data = loaded
+            self._ensure_global_defaults()
             print("[Config] Migrado de v1 → v2.")
             try:
                 self.save()
@@ -158,6 +177,23 @@ class Config:
                 pass
             return
         self._data = loaded
+        self._ensure_global_defaults()
+
+    def _ensure_global_defaults(self):
+        """Preenche chaves de 'global' ausentes (ex.: bloco 'email' em configs
+        gravadas antes desta versão), sem sobrescrever valores existentes."""
+        g = self._data.setdefault("global", {})
+        for key, default in DEFAULT_GLOBAL.items():
+            if key not in g:
+                g[key] = dict(default) if isinstance(default, dict) else default
+        # Garante subchaves do email (ex.: 'events') em configs parciais.
+        email = g.setdefault("email", dict(DEFAULT_EMAIL))
+        for key, default in DEFAULT_EMAIL.items():
+            if key not in email:
+                email[key] = dict(default) if isinstance(default, dict) else default
+        events = email.setdefault("events", dict(DEFAULT_EMAIL["events"]))
+        for key, default in DEFAULT_EMAIL["events"].items():
+            events.setdefault(key, default)
 
     def _read_file(self, path: str):
         if not os.path.exists(path):

@@ -56,6 +56,10 @@ class SequenceRunner:
     def current_step(self) -> int:
         return self._current_step
 
+    @property
+    def is_dry_run(self) -> bool:
+        return self._dry_run
+
     # ── configuration ─────────────────────────────────────────────────────────
 
     def set_callbacks(

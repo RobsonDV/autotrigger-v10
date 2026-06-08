@@ -6,8 +6,10 @@ Motor de sequências — gerencia múltiplas sequências em paralelo.
 - Expõe callbacks de estado/tick para a UI
 """
 import threading
+from datetime import datetime
 from typing import Callable, Dict, Optional
 
+import emailer
 from step_runner import StepRunner
 from sequence_runner import SequenceRunner, RunnerState
 from file_monitor import FileMonitor
@@ -28,6 +30,10 @@ class SequenceEngine:
         self._log_fn: Callable = lambda msg, level="info": print(f"[Engine][{level}] {msg}")
         self._on_runner_update: Optional[Callable] = None  # (seq_id, state_name, step_idx)
         self._on_tick: Optional[Callable] = None           # (seq_id, step_idx, elapsed, total)
+
+        # Watchdog de stream → alerta por email
+        self._streaming_seq_id: Optional[str] = None
+        self._player.set_on_stream_event(self._on_stream_event)
 
     # ── configuration ─────────────────────────────────────────────────────────
 
@@ -173,8 +179,71 @@ class SequenceEngine:
         return _waiter
 
     def _on_state(self, seq_id: str, state: RunnerState, step_idx: int):
+        self._maybe_email_state(seq_id, state, step_idx)
         if self._on_runner_update:
             self._on_runner_update(seq_id, state.value, step_idx)
+
+    # ── alertas por email ──────────────────────────────────────────────────────
+
+    def _email_cfg(self) -> dict:
+        return self._config.get_global().get("email", {}) or {}
+
+    def _seq_name(self, seq_id: str) -> str:
+        seq = self._config.get_sequence_by_id(seq_id)
+        return seq.get("name", seq_id) if seq else seq_id
+
+    def _maybe_email_state(self, seq_id: str, state: RunnerState, step_idx: int):
+        """Dispara emails de início/fim/erro conforme a config. Ignora ensaios."""
+        runner = self._runners.get(seq_id)
+        if runner is not None and runner.is_dry_run:
+            return
+
+        # Rastreia a sequência atualmente em execução p/ contextualizar o stream.
+        if state == RunnerState.RUNNING and step_idx == -1:
+            self._streaming_seq_id = seq_id
+        elif state in (RunnerState.DONE, RunnerState.ERROR, RunnerState.CANCELLED):
+            if self._streaming_seq_id == seq_id:
+                self._streaming_seq_id = None
+
+        cfg = self._email_cfg()
+        if not (cfg.get("enabled") and emailer.is_configured(cfg)):
+            return
+        events = cfg.get("events", {})
+
+        name = self._seq_name(seq_id)
+        ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+        if state == RunnerState.RUNNING and step_idx == -1 and events.get("start"):
+            self._send_email(cfg, f"▶ Disparo iniciado: {name}",
+                             f"A sequência '{name}' iniciou em {ts}.")
+        elif state == RunnerState.DONE and events.get("done"):
+            self._send_email(cfg, f"✅ Disparo concluído: {name}",
+                             f"A sequência '{name}' foi concluída em {ts}.")
+        elif state in (RunnerState.ERROR, RunnerState.CANCELLED) and events.get("error"):
+            motivo = "falhou" if state == RunnerState.ERROR else "foi cancelada"
+            self._send_email(cfg, f"⚠ Disparo {motivo}: {name}",
+                             f"A sequência '{name}' {motivo} em {ts} "
+                             f"(etapa {step_idx + 1}).")
+
+    def _on_stream_event(self, kind: str, detail: str):
+        """Handler do watchdog do player (queda/reconexão de stream)."""
+        name = self._seq_name(self._streaming_seq_id) if self._streaming_seq_id else "Stream"
+        ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        cfg = self._email_cfg()
+        if not (cfg.get("enabled") and emailer.is_configured(cfg)):
+            return
+        if not cfg.get("events", {}).get("stream_reconnect"):
+            return
+        if kind == "dropped":
+            self._send_email(cfg, f"⚠ Stream caiu: {name}",
+                             f"O stream da sequência '{name}' caiu em {ts} ({detail}). "
+                             f"O app está tentando reconectar automaticamente.")
+        elif kind == "recovered":
+            self._send_email(cfg, f"✓ Stream reconectado: {name}",
+                             f"O stream da sequência '{name}' foi reconectado em {ts} ({detail}).")
+
+    def _send_email(self, cfg: dict, subject: str, body: str):
+        emailer.notify_async(cfg, subject, body, log=self._log_fn)
 
     def _on_runner_tick(self, seq_id: str, step_idx: int, elapsed: float, total: float):
         if self._on_tick:

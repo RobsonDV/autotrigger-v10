@@ -135,7 +135,7 @@ class MainWindow(QMainWindow):
             on_deleted=self._delete_sequence,
             on_duplicated=self._duplicate_sequence,
         )
-        self._global = GlobalSettings(self._config, self._on_global_saved)
+        self._global = GlobalSettings(self._config, self._on_global_saved, log=self.on_log)
         self._placeholder = self._build_placeholder()
         self._stack.addWidget(self._placeholder)   # 0
         self._stack.addWidget(self._detail)        # 1
