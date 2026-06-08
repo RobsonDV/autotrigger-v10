@@ -223,7 +223,14 @@ del "%~f0"
             self._log(f"Erro ao iniciar a instalação: {exc}", "error")
             return
 
-        sys.exit(0)
+        # Encerra o processo ATUAL para que o batch possa substituir o .exe.
+        # IMPORTANTE: apply_update roda em uma thread de background (ver
+        # ui/update_dialog.py), portanto sys.exit() encerraria apenas a thread,
+        # NÃO o processo — o app Qt continuaria vivo, o lock do .exe nunca seria
+        # liberado e o batch ficaria preso no loop de espera do PID, nunca
+        # instalando a atualização. os._exit() encerra o processo inteiro a
+        # partir de qualquer thread.
+        os._exit(0)
 
     # ── private ─────────────────────────────────────────────────────────────
 
